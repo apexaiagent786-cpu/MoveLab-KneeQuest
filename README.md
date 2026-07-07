@@ -26,23 +26,40 @@ Phone browsers only allow the camera on a secure origin. Easiest: **GitHub Pages
 Quick laptop check: `python -m http.server 8000` → open
 `http://localhost:8000/mobile_app/` (localhost counts as secure).
 
+## Reliability (toward goniometer-grade)
+- **Calibration ("Cal 0°")** — stand with the leg straight and tap **🎯 Cal 0°**.
+  This zeroes the extension reference, removing each person's/camera's systematic
+  offset (exactly how you'd zero a goniometer). Do this once per session/leg.
+- **Median outlier rejection** removes single-frame spikes before smoothing.
+- **One-Euro smoothing + deadband** → the number holds steady when you're still.
+- **Physiological clamp** (0–160°) and **confidence gating** stop bad frames from
+  corrupting ROM / reps. The panel shows a live **confidence %** per knee.
+- A **continuous** smoothed value feeds ROM/reps/recording, while the on-screen
+  number is the steadied display value.
+
+> Still a camera estimate, not a certified device — but calibration removes bias
+> and the filtering removes jitter, giving good repeatability. **Side view is the
+> most reliable.**
+
 ## Using it (demo flow)
 1. Stand **side-on**, 2–3 m back, whole body in frame, good light.
    Top bar should read **View: SIDE (L)** or **(R)**.
-2. The **Knee Flexion** panel shows the live angle, state (EXTENSION → MAX FLEX),
-   session **ROM (min–max)**, and **reps** (a rep = straighten → bend past 70° →
-   straighten under 25°). A live arc + degree is drawn on the knee.
-3. Tap **⏺ Record**, do a few knee bends / squats, tap **⏹ Stop**.
-4. The **Report** opens: per-knee summary (min/peak flexion, ROM, reps) and a
+2. Straighten the leg and tap **🎯 Cal 0°** — a straight leg should now read ~0°.
+3. The **Knee Flexion** panel shows the live angle, state (EXTENSION → MAX FLEX),
+   confidence %, session **ROM (min–max)**, and **reps** (a rep = straighten →
+   bend past 70° → straighten under 25°). A live arc + degree is drawn on the knee.
+4. Tap **⏺ Record**, do a few knee bends / squats, tap **⏹ Stop**.
+5. The **Report** opens: per-knee summary (min/peak flexion, ROM, reps) and a
    **flexion-vs-time chart**. Save with **⬇ CSV / ⬇ JSON**.
 
 | Control | Action |
 |---|---|
 | **🔄 Flip** | mirror the image |
+| **🎯 Cal 0°** | calibrate: straight leg → 0° (removes offset) |
 | **🏷 Labels** | show/hide joint names |
 | **⏺ Record / ⏹ Stop** | capture knee angle over time |
 | **📊 Report** | summary + flexion-vs-time charts + export |
-| **↺ Reset** | zero ROM, reps and recording |
+| **↺ Reset** | zero ROM, reps and calibration |
 
 ## What gets saved
 - **CSV**: `time_s, left_knee_flex, right_knee_flex`

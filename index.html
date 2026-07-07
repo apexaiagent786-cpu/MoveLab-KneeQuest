@@ -117,6 +117,7 @@
 
 <div id="controls">
   <button id="btnFlip">🔄 Flip</button>
+  <button id="btnCal" class="primary">🎯 Cal 0°</button>
   <button id="btnLabels" class="primary">🏷 Labels</button>
   <button id="btnRec" class="rec">⏺ Record</button>
   <button id="btnReport" disabled>📊 Report</button>
@@ -173,6 +174,8 @@ const RIGHT_IDX = [4,5,6,8,10,12,14,16,18,20,22,24,26,28,30,32];
 const VIS_DRAW=0.5, VIS_LABEL=0.6, VIS_HI=0.75, VIS_KNEE=0.55;
 const DEADBAND=1.5;                 // steady on-screen number
 const REP_BENT=70, REP_STRAIGHT=25; // rep state-machine thresholds (flexion deg)
+const MIN_KNEE=0, MAX_KNEE=160;     // physiological knee flexion clamp
+const MED_WIN=5;                    // median window for outlier rejection
 
 // ──────────────────── One-Euro filter ─────────────────────
 class OneEuro{
@@ -238,7 +241,21 @@ const fX=[], fY=[]; for(let i=0;i<33;i++){fX[i]=new OneEuro();fY[i]=new OneEuro(
 // knee measurement state
 const kFilt={L:new OneEuro(0.5,0.10), R:new OneEuro(0.5,0.10)};
 const kHold={}, kRom={L:[180,0],R:[180,0]}, kRep={L:{n:0,phase:"straight"},R:{n:0,phase:"straight"}};
+const kMed={L:[],R:[]};              // raw-angle window for median outlier rejection
+const calib={L:0,R:0};               // extension calibration offset (deg)
+let lastShown={L:null,R:null};
 let recording=false, session=[], sessionStart=0;
+
+function median(a){const s=[...a].sort((x,y)=>x-y),m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;}
+// Calibrate the currently-measured knee(s) so a straight leg reads exactly 0°
+// (removes each person's/camera's systematic offset — like zeroing a goniometer).
+function calibrateNow(side){
+  const sides=side?[side]:["L","R"], done=[];
+  for(const s of sides){ if(lastShown[s]&&lastShown[s].valid){ calib[s]+=lastShown[s].live; done.push(s);} }
+  toast(done.length ? "Calibrated "+done.join(" & ")+" → 0°"
+                    : "Hold leg straight & in view, then tap Cal");
+  return done;
+}
 
 function toast(m){const t=$("toast");t.textContent=m;t.style.opacity=1;
   clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2200);}
@@ -346,35 +363,44 @@ function draw(res,now){
       if(showLabels && LABELS[i] && v>=VIS_LABEL && !(hidden&&hidden.has(i))) drawLabel(x,y,LABELS[i]);
     }
 
-    // ── knee angles ──
+    // ── knee angle measurement (goniometer-grade pipeline) ──
+    const clamp=v=>Math.max(MIN_KNEE,Math.min(MAX_KNEE,v));
     for(const side of ["L","R"]){
       const K=KNEES[side];
-      if(!measure[side]){ continue; }
-      if(Math.min(sm[K.hip].visibility,sm[K.knee].visibility,sm[K.ankle].visibility)<VIS_KNEE) continue;
-      // SIDE → accurate 2-D sagittal angle; else → 3-D world angle
-      let rawA = (vl==="SIDE") ? angle2d(sm[K.hip],sm[K.knee],sm[K.ankle],asp)
-                               : angle3d(wlm[K.hip],wlm[K.knee],wlm[K.ankle]);
-      if(rawA===null) rawA = angle3d(wlm[K.hip],wlm[K.knee],wlm[K.ankle]);
-      if(rawA===null) continue;
-      const smA=kFilt[side].filt(rawA,t);
+      if(!measure[side]){ kMed[side].length=0; shown[side]=null; continue; }
+      const conf=Math.min(sm[K.hip].visibility,sm[K.knee].visibility,sm[K.ankle].visibility);
+      if(conf<VIS_KNEE){ shown[side]=null; continue; }
+      // view-adaptive raw angle: 2-D sagittal (side) / 3-D world (else)
+      let rawA=(vl==="SIDE")?angle2d(sm[K.hip],sm[K.knee],sm[K.ankle],asp)
+                            :angle3d(wlm[K.hip],wlm[K.knee],wlm[K.ankle]);
+      if(rawA===null) rawA=angle3d(wlm[K.hip],wlm[K.knee],wlm[K.ankle]);
+      if(rawA===null){ shown[side]=null; continue; }
+      // median window rejects single-frame spikes, then One-Euro smooths
+      const win=kMed[side]; win.push(rawA); if(win.length>MED_WIN)win.shift();
+      const smA=kFilt[side].filt(median(win),t);
+      // deadband hold → steady display; continuous value → live
       let hv=kHold[side];
       if(hv===undefined||Math.abs(smA-hv)>DEADBAND) hv=smA;
       kHold[side]=hv;
-      const flex=clinFlex(hv);
-      kRom[side][0]=Math.min(kRom[side][0],flex);
-      kRom[side][1]=Math.max(kRom[side][1],flex);
-      // rep state-machine
-      const rp=kRep[side];
-      if(rp.phase==="straight" && flex>REP_BENT) rp.phase="bent";
-      else if(rp.phase==="bent" && flex<REP_STRAIGHT){ rp.phase="straight"; rp.n++; }
-      shown[side]={flex, raw:hv};
-      drawKneeArc(sm[K.hip],sm[K.knee],sm[K.ankle],flex,K.color);
+      const live=clamp(clinFlex(smA)-calib[side]);   // continuous, for ROM/reps/data
+      const disp=clamp(clinFlex(hv)-calib[side]);     // steady, for on-screen number
+      const valid=conf>=VIS_KNEE;
+      if(valid){
+        kRom[side][0]=Math.min(kRom[side][0],live);
+        kRom[side][1]=Math.max(kRom[side][1],live);
+        const rp=kRep[side];
+        if(rp.phase==="straight" && live>REP_BENT) rp.phase="bent";
+        else if(rp.phase==="bent" && live<REP_STRAIGHT){ rp.phase="straight"; rp.n++; }
+      }
+      shown[side]={flex:disp, live, conf, valid, calibrated:calib[side]!==0};
+      drawKneeArc(sm[K.hip],sm[K.knee],sm[K.ankle],disp,K.color);
     }
+    lastShown=shown;
 
     if(recording){
       session.push({t:(now-sessionStart)/1000,
-        L: shown.L? +shown.L.flex.toFixed(1):null,
-        R: shown.R? +shown.R.flex.toFixed(1):null});
+        L: shown.L? +shown.L.live.toFixed(1):null,
+        R: shown.R? +shown.R.live.toFixed(1):null});
     }
   }else{
     viewStr="View: —"; viewCol="#9aa0c0"; diagStr=delegate+" · 0/33 joints";
@@ -426,7 +452,8 @@ function updateKneePanel(shown){
       const [st,sc]=kneeState(s.flex);
       $(id+"val").innerHTML=Math.round(s.flex)+'<small>° flex</small>';
       $(id+"val").style.color=sc;
-      $(id+"state").textContent=st; $(id+"state").style.color=sc;
+      $(id+"state").textContent=(s.calibrated?"✓ ":"")+st+"  "+Math.round(s.conf*100)+"%";
+      $(id+"state").style.color=sc;
       $(id+"rom").textContent=`ROM ${Math.round(kRom[side][0])}–${Math.round(kRom[side][1])}°`;
       $(id+"rep").textContent=`reps ${kRep[side].n}`;
     }else{
@@ -519,13 +546,15 @@ $("btnStart").onclick=async()=>{
     $("loadmsg").textContent="Error: "+(e.message||e); }
 };
 $("btnFlip").onclick=()=>{mirror=!mirror;applyMirror();toast("Mirror "+(mirror?"on":"off"));};
+$("btnCal").onclick=()=>calibrateNow();
 $("btnLabels").onclick=()=>{showLabels=!showLabels;
   $("btnLabels").classList.toggle("primary",showLabels);
   toast("Joint labels "+(showLabels?"on":"off"));};
 $("btnRec").onclick=()=>setRec(!recording);
 $("btnReport").onclick=openReport;
 $("btnReset").onclick=()=>{kRom.L=[180,0];kRom.R=[180,0];kRep.L={n:0,phase:"straight"};
-  kRep.R={n:0,phase:"straight"};session=[];$("btnReport").disabled=true;toast("ROM & reps reset");};
+  kRep.R={n:0,phase:"straight"};calib.L=0;calib.R=0;session=[];
+  $("btnReport").disabled=true;toast("ROM, reps & calibration reset");};
 $("btnCsv").onclick=exportCSV;
 $("btnJson").onclick=exportJSON;
 $("btnClose").onclick=()=>$("report").style.display="none";
