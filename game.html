@@ -185,9 +185,9 @@
 
 <script type="module">
 import { FilesetResolver, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
-import { OneEuro, detectView, KneeMeter, KNEES, vis, VIS_DRAW } from "./core.js";
-import { HoldDetector, FB } from "./holdDetector.js";
-import { loadSessions, saveSession, clearSessions, summarize } from "./storage.js";
+import { OneEuro, detectView, KneeMeter, KNEES, vis, VIS_DRAW } from "./js/core.js";
+import { HoldDetector, FB } from "./js/holdDetector.js";
+import { loadSessions, saveSession, clearSessions, summarize } from "./js/storage.js";
 
 const POSE_MODEL="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task";
 const WASM="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm";

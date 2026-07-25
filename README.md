@@ -16,15 +16,31 @@ motion (ROM), a bend/rep counter, and a recordable report.
 - The reading is smoothed (One-Euro) and held with a small deadband so it stays
   **steady** while you hold still, and updates instantly when you move.
 
-## Run it on a phone (needs HTTPS)
-Phone browsers only allow the camera on a secure origin. Easiest: **GitHub Pages**.
-1. In the `apexaiagent786-cpu/MoveLab` repo → **Settings → Pages** →
-   Source: **Deploy from a branch**, Branch: **main / root** → Save.
-2. Open on your phone: **https://apexaiagent786-cpu.github.io/MoveLab/**
-3. Tap **Start**, allow the camera, optionally **Add to Home Screen**.
+## Live app (published on GitHub Pages)
+- **Knee tracker:** https://apexaiagent786-cpu.github.io/MoveLab-KneeQuest/
+- **Rehab games:** https://apexaiagent786-cpu.github.io/MoveLab-KneeQuest/game.html
 
-Quick laptop check: `python -m http.server 8000` → open
-`http://localhost:8000/mobile_app/` (localhost counts as secure).
+Open either on your phone, tap **Start**, allow the camera, optionally **Add to
+Home Screen**. Phone browsers only allow the camera on a secure (HTTPS) origin,
+which Pages provides.
+
+Quick laptop check: `python -m http.server 8000` from the repo root → open
+`http://localhost:8000/` (tracker) or `http://localhost:8000/game.html` (games).
+`localhost` counts as a secure origin, so the camera works.
+
+## Project structure
+```
+index.html          Knee ROM tracker (Pages entry)
+game.html           Isometric rehab games (Wall-Sit Guardian, Seated Extension Hold)
+manifest.json       PWA manifest
+js/                 Shared ES modules
+  core.js             pose/angle pipeline (OneEuro, KneeMeter, view detection)
+  holdDetector.js     isometric hold detection + coaching cues + scoring
+  storage.js          offline session history + progress analytics
+desktop/            Python + OpenCV desktop tracker (see desktop/README.md)
+tests/              In-browser core-logic test runner (tests/test.html)
+docs/               Project documents (execution plan)
+```
 
 ## Reliability (toward goniometer-grade)
 - **Calibration ("Cal 0°")** — stand with the leg straight and tap **🎯 Cal 0°**.
