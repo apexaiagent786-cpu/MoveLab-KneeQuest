@@ -4,11 +4,12 @@
 // and emits a coaching feedback code. Deterministic → unit-testable.
 
 export const FB = {
-  NO_TRACK:"no_track",     // pose/knee not reliable
-  BELOW:"below",           // not enough flexion — bend deeper
-  ABOVE:"above",           // too much flexion — ease up
+  NO_TRACK:"no_track",     // pose/joint not reliable
+  BELOW:"below",           // measured value below band — beacon-specific cue
+  ABOVE:"above",           // measured value above band — beacon-specific cue
   JITTER:"jitter",         // in band but unsteady — hold steady
   GOOD:"good",             // in band and steady — hold it
+  POSTURE:"posture",       // position ok but posture/pelvis/foot check failed
 };
 
 export class HoldDetector{
@@ -41,25 +42,31 @@ export class HoldDetector{
 
   /**
    * Advance the detector.
-   * @param flex knee-flexion angle in deg, or null when tracking is unreliable
-   * @param tSec monotonically increasing time in seconds
-   * @returns {inBand, progress(0..1), holdTime, timeInBand, timeTotal,
-   *           inBandPct(0..1), steadiness, feedback, justSucceeded}
+   * @param value the beacon's measured quantity (knee angle, hip angle, sway…),
+   *              or null when tracking is unreliable
+   * @param tSec  monotonically increasing time in seconds
+   * @param opts  optional per-frame overrides for non-angle beacons:
+   *              { gate:boolean }  force in/out-of-band (e.g. posture/pelvis check)
+   *              { feedback:code } force a specific coaching cue (e.g. "fix posture")
+   * @returns {inBand, progress(0..1), holdTime, peakHold, timeInBand, timeTotal,
+   *           inBandPct(0..1), steadiness, brightness(0..1), feedback, justSucceeded, success}
    */
-  update(flex, tSec){
+  update(value, tSec, opts){
     const c=this.cfg;
     const dt = this._t==null ? 0 : Math.max(0, Math.min(0.25, tSec-this._t));
     this._t=tSec;
     this.timeTotal += dt;
 
-    if(flex==null){
+    if(value==null){
       // lost tracking → progress pauses; reset continuous hold if the blip is long
       if(this.lastInBand==null || (tSec-this.lastInBand)*1000 > c.graceMs) this.holdTime=0;
       return this._out(false, FB.NO_TRACK, false);
     }
 
-    const dev = flex - c.target;
-    const inBand = Math.abs(dev) <= c.band;
+    const dev = value - c.target;
+    // band gate — overridable so posture/pelvis/foot-lift checks can veto a hold
+    let inBand = Math.abs(dev) <= c.band;
+    if(opts && typeof opts.gate === "boolean") inBand = opts.gate;
 
     if(inBand){
       this.holdTime  += dt;
@@ -75,7 +82,8 @@ export class HoldDetector{
     const steadiness = this._dev.length ? this._dev.reduce((a,b)=>a+b,0)/this._dev.length : 0;
 
     let fb;
-    if(!inBand)                        fb = dev < 0 ? FB.BELOW : FB.ABOVE;
+    if(opts && opts.feedback)          fb = opts.feedback;      // beacon-specific cue
+    else if(!inBand)                   fb = dev < 0 ? FB.BELOW : FB.ABOVE;
     else if(steadiness > c.jitterTol)  fb = FB.JITTER;
     else                               fb = FB.GOOD;
 
@@ -86,6 +94,9 @@ export class HoldDetector{
   }
 
   _out(inBand, feedback, justSucceeded, steadiness=0){
+    // brightness (0..1): 1 = rock steady, drops as jitter grows toward the band width.
+    // Drives the lighthouse beam. Only meaningful while in-band.
+    const brightness = inBand ? Math.max(0, Math.min(1, 1 - steadiness / Math.max(this.cfg.band, 1e-6))) : 0;
     return {
       inBand,
       progress: Math.min(this.holdTime / this.cfg.holdSecs, 1),
@@ -95,6 +106,7 @@ export class HoldDetector{
       timeTotal: this.timeTotal,
       inBandPct: this.timeTotal>0 ? this.timeInBand/this.timeTotal : 0,
       steadiness,
+      brightness,
       success: this._success,
       justSucceeded,
       feedback,

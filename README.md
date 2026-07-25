@@ -18,27 +18,40 @@ motion (ROM), a bend/rep counter, and a recordable report.
 
 ## Live app (published on GitHub Pages)
 - **Knee tracker:** https://apexaiagent786-cpu.github.io/MoveLab-KneeQuest/
-- **Rehab games:** https://apexaiagent786-cpu.github.io/MoveLab-KneeQuest/game.html
+- **STEADFAST (isometric game):** https://apexaiagent786-cpu.github.io/MoveLab-KneeQuest/game.html
 
 Open either on your phone, tap **Start**, allow the camera, optionally **Add to
 Home Screen**. Phone browsers only allow the camera on a secure (HTTPS) origin,
 which Pages provides.
 
 Quick laptop check: `python -m http.server 8000` from the repo root → open
-`http://localhost:8000/` (tracker) or `http://localhost:8000/game.html` (games).
+`http://localhost:8000/` (tracker) or `http://localhost:8000/game.html` (STEADFAST).
 `localhost` counts as a secure origin, so the camera works.
+
+## STEADFAST — the isometric rehab game
+"Hold the Light": each **beacon** is an isometric hold; the light burns while your
+joint is **in the target band** and brightens the **steadier** you hold. Three
+webcam-measurable quantities drive everything — *in-band gate*, *steadiness*, and
+*hold-time*. MVP beacons: Harbor Light (wall sit), Cliff Light (SLR hold), Anchor
+Stance (single-leg balance), Keystone (glute bridge). Includes NPRS pain check,
+spoken breathing/coaching cues, a coast-map progress view, and CSV/JSON export.
+
+> Honest limit: a webcam measures joint **position**, not muscle **force** — so
+> STEADFAST uses position-hold isometrics where "holding" is visible. Force/EMG
+> feedback is future work (add-on hardware).
 
 ## Project structure
 ```
 index.html          Knee ROM tracker (Pages entry)
-game.html           Isometric rehab games (Wall-Sit Guardian, Seated Extension Hold)
+game.html           STEADFAST — isometric rehab game (beacon-driven)
 manifest.json       PWA manifest
 js/                 Shared ES modules
   core.js             pose/angle pipeline (OneEuro, KneeMeter, view detection)
-  holdDetector.js     isometric hold detection + coaching cues + scoring
+  holdDetector.js     hold detection (in-band + steadiness + hold-time), scoring
+  beacons.js          per-exercise config + measured-quantity providers
   storage.js          offline session history + progress analytics
 desktop/            Python + OpenCV desktop tracker (see desktop/README.md)
-tests/              In-browser core-logic test runner (tests/test.html)
+tests/              In-browser test runner (tests/test.html) — 19 checks
 docs/               Project documents (execution plan)
 ```
 
