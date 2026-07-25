@@ -135,6 +135,14 @@
     <div style="color:var(--muted);font-size:12px">LIVE KNEE</div>
     <div id="calVal" style="font-size:44px;font-weight:800;color:var(--cyan)">—°</div>
     <div id="calRange" style="color:var(--muted);font-size:12px">range —</div>
+    <div style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:10px">
+      <span style="font-size:11px;color:var(--muted)">DOWN</span>
+      <div id="ctrlBar" style="width:190px;height:14px;background:#ffffff1c;border-radius:8px;position:relative;flex:none">
+        <div id="ctrlDot" style="position:absolute;top:-3px;width:20px;height:20px;border-radius:50%;background:var(--beam);left:0;box-shadow:0 0 8px var(--beam)"></div>
+      </div>
+      <span style="font-size:11px;color:var(--muted)">UP</span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:4px">Move your knee — the dot should slide. Wrong way? Tap <b>Invert</b>.</div>
   </div>
   <p id="calMsg" style="font-size:13px">Tap <b>Learn my range</b>, then gently bend &amp; straighten your knee a few times.</p>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
@@ -203,7 +211,7 @@ let landmarker=null, stream=null, facing="user", camDevices=[], camIdx=0;
 let lastVideoTime=-1, lastRes=null;
 const fX=[],fY=[]; for(let i=0;i<33;i++){fX[i]=new OneEuro();fY[i]=new OneEuro();}
 const meter=new KneeMeter();
-let flex=null, flexConf=0, invert=false, flexSmooth=new OneEuro(0.6,0.10), calLo=0, calHi=160, warmMin=999, warmMax=-999, warmUntil=0;
+let flex=null, flexConf=0, invert=false, flexSmooth=new OneEuro(1.5,0.4), calLo=0, calHi=160, warmMin=999, warmMax=-999, warmUntil=0;
 
 function toast(m){const t=$("toast");if(!t)return;t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,1800);}
 function showScreen(id){for(const s of ["menu","calib","win","progress"])$(s).style.display=(s===id)?"flex":"none";}
@@ -429,7 +437,10 @@ function poseLoop(){ if(!camActive){return;} requestAnimationFrame(poseLoop);
 function updateTrackBadge(){ const b=$("trackBadge"); if(!b)return;
   if(flex!=null && flexConf>=0.6){ b.textContent="✓ Leg tracked ("+Math.round(flexConf*100)+"%)"; b.style.color="var(--green)"; }
   else if(flexConf>=0.25){ b.textContent="⚠ Move back — show your whole leg (hip→ankle)"; b.style.color="var(--amber)"; }
-  else { b.textContent="📷 Step into frame, side-on to the camera"; b.style.color="var(--amber)"; } }
+  else { b.textContent="📷 Step into frame, side-on to the camera"; b.style.color="var(--amber)"; }
+  // live control preview: dot shows where this knee position flies the lantern
+  const dot=$("ctrlDot"); if(dot){ if(flex!=null){ const range=Math.max(calHi-calLo,1); let n=clamp01((calHi-flex)/range); if(invert)n=1-n;
+      dot.style.left=(n*170)+"px"; dot.style.opacity="1"; } else dot.style.opacity="0.3"; } }
 
 // ── warm-up calibration ──
 $("btnCalStart").onclick=()=>{ warmMin=999;warmMax=-999; phase="warmup"; warmUntil=performance.now()+6000; $("calMsg").innerHTML="Now — gently <b>bend and straighten</b> your knee a few times through a comfortable range…";
