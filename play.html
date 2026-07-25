@@ -120,6 +120,7 @@
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button id="btnCalStart" class="primary big">▶ Learn my range (6s)</button>
     <button id="btnCalGo" class="primary big" style="display:none">✓ Fly!</button>
+    <button id="btnCalSkip" class="ghost">Skip →</button>
     <button id="btnBackMenu" class="ghost">← Menu</button>
   </div>
   <div class="toast" id="toast"></div>
@@ -172,7 +173,7 @@ let worldX=0, totalLen=90, stars=[], particles=[], clouds=[], hillSeed=Math.rand
 let path=[], pathTotal=0, halfW=0.11, speed=10;
 let starsGot=0, score=0, reps=0, inChanSec=0, elapsed=0, lastTs=0;
 let repPhase="mid", romLoObs=1, romHiObs=0;
-let running=false, rafId=0;
+let running=false, rafId=0, camActive=false;   // running = game loop; camActive = pose loop
 // camera
 let landmarker=null, stream=null, facing="user", camDevices=[], camIdx=0;
 let lastVideoTime=-1, lastRes=null;
@@ -218,13 +219,13 @@ function pathCenterAt(d){
 
 // ── start flows ──
 async function startMouse(){
-  mode="mouse"; $("modeTxt").textContent="🖱 Mouse"; $("pip").style.display="none"; $("btnSwitch").style.display="none"; $("btnRecal").style.display="none";
+  mode="mouse"; camActive=false; $("modeTxt").textContent="🖱 Mouse"; $("pip").style.display="none"; $("btnSwitch").style.display="none"; $("btnRecal").style.display="none";
   beginLevel();
 }
 async function startCameraFlow(){
   $("btnCam").style.display="none"; $("btnMouse").style.display="none"; $("spin").style.display="block";
   try{ if(!landmarker)await loadModel(); $("loadmsg").textContent="Starting camera…"; await startCamera();
-    mode="camera"; $("modeTxt").textContent="📷 Knee"; $("pip").style.display="block"; running=true; poseLoop();
+    mode="camera"; $("modeTxt").textContent="📷 Knee"; $("pip").style.display="block"; camActive=true; poseLoop();
     showScreen("calib"); phase="calib";
   }catch(e){ $("spin").style.display="none"; $("btnCam").style.display=""; $("btnMouse").style.display=""; $("loadmsg").textContent="Error: "+(e.message||e); }
 }
@@ -255,6 +256,8 @@ function step(dt,now){
   else controlNorm = flex==null ? controlNorm : clamp01((calHi - flex)/Math.max(calHi-calLo,1)); // straighter(lower flex)=up
   updateReps();
   if(phase==="countdown"){ const rem=Math.ceil((countUntil-now)/1000);
+    $("hint").style.display="block"; $("hint").style.color="#37e1ff";
+    $("hint").textContent = mode==="camera" ? "Move your knee up & down to fly!" : "Move your mouse / finger up & down!";
     if(rem<=0){ phase="play"; $("countbig").style.display="none"; } else { $("countbig").style.display="flex"; $("countbig").textContent=rem; } }
   else $("countbig").style.display="none";
   if(phase==="play"){ elapsed+=dt; worldX+=speed*dt;
@@ -387,7 +390,7 @@ async function startCamera(){ if(stream)stream.getTracks().forEach(t=>t.stop());
   stream=s; video.srcObject=s; await new Promise(r=>{ if(video.readyState>=1)r(); else video.onloadedmetadata=()=>r(); }); await video.play(); await refreshCams(); }
 async function switchCam(){ await refreshCams(); if(camDevices.length>1)camIdx=(camIdx+1)%camDevices.length; else facing=facing==="user"?"environment":"user";
   try{ await startCamera(); toast("Camera switched"); }catch(e){ toast("Could not switch"); } }
-function poseLoop(){ if(!running && mode!=="camera"){return;} requestAnimationFrame(poseLoop);
+function poseLoop(){ if(!camActive){return;} requestAnimationFrame(poseLoop);
   if(!landmarker||video.readyState<2)return; const now=performance.now();
   if(video.currentTime!==lastVideoTime){ lastVideoTime=video.currentTime; try{ lastRes=landmarker.detectForVideo(video,now);}catch(e){} }
   if(lastRes&&lastRes.landmarks&&lastRes.landmarks[0]){ const raw=lastRes.landmarks[0]; const wlm=(lastRes.worldLandmarks&&lastRes.worldLandmarks[0])||raw; const t=now/1000;
@@ -405,6 +408,7 @@ function endWarm(){ if(warmMax-warmMin<12){ toast("Try a bigger range"); phase="
   calLo=warmMin; calHi=warmMax; phase="calib"; $("btnCalStart").style.display="none"; $("btnCalGo").style.display="";
   $("calMsg").innerHTML=`Range learned: <b>${Math.round(calLo)}–${Math.round(calHi)}°</b>. Straighten to fly up, bend to come down. Ready?`; }
 $("btnCalGo").onclick=()=>{ beginLevel(); };
+$("btnCalSkip").onclick=()=>{ if(calHi-calLo<12){ calLo=0; calHi=120; } beginLevel(); };  // fallback: sensible default range
 
 // ── pointer (mouse/touch) control ──
 function ptr(e){ const y=(e.touches?e.touches[0].clientY:e.clientY); pointerNorm=clamp01(1-(y-playTop)/playH); }
@@ -426,11 +430,11 @@ function renderProgress(){ const all=loadSessions().filter(s=>s.game==="skytrail
 // ── controls ──
 $("btnMouse").onclick=startMouse;
 $("btnCam").onclick=startCameraFlow;
-$("btnBackMenu").onclick=()=>{ phase="menu"; running=false; showScreen("menu"); $("btnCam").style.display="";$("btnMouse").style.display="";$("spin").style.display="none"; $("btnCalStart").style.display="";$("btnCalGo").style.display="none"; };
-$("btnPause").onclick=()=>{ phase="menu"; running=false; hudOn(false); $("hint").style.display="none"; showScreen("menu"); $("btnCam").style.display="";$("btnMouse").style.display="";$("spin").style.display="none"; };
-$("btnRecal").onclick=()=>{ if(mode==="camera"){ running=true; showScreen("calib"); phase="calib"; hudOn(false); $("hint").style.display="none"; $("btnCalStart").style.display="";$("btnCalGo").style.display="none"; } };
+$("btnBackMenu").onclick=()=>{ phase="menu"; running=false; camActive=false; showScreen("menu"); $("btnCam").style.display="";$("btnMouse").style.display="";$("spin").style.display="none"; $("btnCalStart").style.display="";$("btnCalGo").style.display="none"; };
+$("btnPause").onclick=()=>{ phase="menu"; running=false; camActive=false; hudOn(false); $("hint").style.display="none"; showScreen("menu"); $("btnCam").style.display="";$("btnMouse").style.display="";$("spin").style.display="none"; };
+$("btnRecal").onclick=()=>{ if(mode==="camera"){ running=false; showScreen("calib"); phase="calib"; hudOn(false); $("hint").style.display="none"; $("btnCalStart").style.display="";$("btnCalGo").style.display="none"; } };
 $("btnSwitch").onclick=switchCam;
-$("btnAgain").onclick=()=>{ if(mode==="camera"){ showScreen("calib"); phase="calib"; running=true; $("btnCalStart").style.display="";$("btnCalGo").style.display="none"; } else beginLevel(); };
+$("btnAgain").onclick=()=>{ if(mode==="camera"){ running=false; showScreen("calib"); phase="calib"; $("btnCalStart").style.display="";$("btnCalGo").style.display="none"; } else beginLevel(); };
 $("btnMenu2").onclick=()=>{ showScreen("menu"); $("btnCam").style.display="";$("btnMouse").style.display=""; };
 $("lnkProg").onclick=()=>{ renderProgress(); showScreen("progress"); };
 $("btnProgBack").onclick=()=>showScreen("menu");
