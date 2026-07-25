@@ -221,6 +221,7 @@ let curBeaconId="harbor";
 let queue=["harbor"], qi=0, setIdx=0;
 let phase="menu", totalScore=0, setResults=[], session=[], holdStart=0, restUntil=0, countUntil=0;
 let holdBaseline=null;             // hip-centre baseline for sway beacons
+let shipsHome=0, harborParts=[];   // animated harbor scene (ships guided home)
 let painPre=null, painPost=null, painTarget="pre";
 let voiceOn=true, lastSpoken="", lastSpokeAt=0, lastBreathAt=0;
 
@@ -347,10 +348,10 @@ function frame(res,now){
     const opts = (m.gate===false) ? {gate:false, feedback:FB.POSTURE} : undefined;
     const st=det.update(val, now/1000, opts);
     session.push({t:+((now-holdStart)/1000).toFixed(2),beacon:curBeaconId,set:setIdx+1,value:m.valid?+(+m.value).toFixed(1):null,inBand:st.inBand});
-    drawBeam(st); drawBandGauge(m.valid?m.value:null, st); updateHud(st); setFeedback(st);
+    drawHarbor(st,now); drawBeam(st); drawBandGauge(m.valid?m.value:null, st); updateHud(st); setFeedback(st);
     // breathing safety cue every ~11s of holding
     if(now-lastBreathAt>11000 && st.holdTime>4){ lastBreathAt=now; speak("Keep breathing"); }
-    if(st.justSucceeded){ speak("Well held"); endSet(); }
+    if(st.justSucceeded){ shipsHome++; harborBurst(); speak("Well held — a ship reaches harbour"); endSet(); }
     else if(st.timeTotal>Math.max(cfg.holdSecs*4,40)){ endSet(); }
   }
   if(phase==="rest"){ const rem=Math.ceil((restUntil-now)/1000);
@@ -390,6 +391,54 @@ function drawBeam(st){
   ctx.fillStyle="#ffe08a";ctx.fillRect(bx,by,bw*b,6);
   ctx.fillStyle="#ffe08a";ctx.font="700 11px sans-serif";ctx.fillText("beam "+Math.round(b*100)+"%",cx,by+18);
 }
+// ── animated harbor scene (ships guided home while you hold the light) ──
+function drawHarbor(st,now){
+  const W=canvas.width, H=canvas.height, seaY=H*0.80;
+  ctx.save();
+  // twinkling stars up top (subtle, keeps the body visible)
+  for(let i=0;i<24;i++){ const sx=(i*89.7)%W, sy=(i*47.3)%(H*0.32);
+    ctx.globalAlpha=0.2+0.35*Math.abs(Math.sin(i+now/900)); ctx.fillStyle="#ffffff"; ctx.fillRect(sx,sy,2,2); }
+  ctx.globalAlpha=1;
+  // sea
+  const g=ctx.createLinearGradient(0,seaY,0,H); g.addColorStop(0,"rgba(18,56,106,0.55)"); g.addColorStop(1,"rgba(10,30,68,0.85)");
+  ctx.fillStyle=g; ctx.fillRect(0,seaY,W,H-seaY);
+  // waves
+  ctx.strokeStyle="rgba(55,225,255,0.33)"; ctx.lineWidth=2;
+  for(let k=0;k<3;k++){ ctx.beginPath(); const yy=seaY+10+k*15;
+    for(let x=0;x<=W;x+=14){ const y=yy+Math.sin(x/40+now/500+k)*4; x?ctx.lineTo(x,y):ctx.moveTo(x,y); } ctx.stroke(); }
+  const lx=W*0.13;
+  // active ship sails toward the harbour; progress = hold progress
+  const shipX=W*0.92-(W*0.92-lx-30)*st.progress, bob=Math.sin(now/300)*3+(st.inBand?0:6);
+  drawShip(shipX, seaY+24+bob, st.inBand?1:0.5, false);
+  for(let i=0;i<Math.min(shipsHome,6);i++) drawShip(lx+34+i*20, seaY+30, 0.75, true);   // docked fleet
+  drawLighthouse2(lx, seaY, st.brightness, now);
+  // particles
+  for(const p of harborParts){ p.x+=p.vx; p.y+=p.vy; p.vy+=0.06; p.life-=0.025;
+    if(p.life>0){ ctx.globalAlpha=Math.max(0,p.life); ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(p.x,p.y,3,0,7); ctx.fill(); } }
+  ctx.globalAlpha=1; harborParts=harborParts.filter(p=>p.life>0);
+  ctx.restore();
+}
+function drawLighthouse2(x,baseY,bright,now){
+  ctx.save(); ctx.translate(x,baseY);
+  if(bright>0){ ctx.save(); ctx.translate(0,-62); ctx.rotate(Math.sin(now/700)*0.5);
+    const bg=ctx.createLinearGradient(0,0,0,-170); bg.addColorStop(0,`rgba(255,224,138,${0.32*bright})`); bg.addColorStop(1,"rgba(255,224,138,0)");
+    ctx.fillStyle=bg; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-42,-170); ctx.lineTo(42,-170); ctx.closePath(); ctx.fill(); ctx.restore(); }
+  ctx.fillStyle="#e9eefc"; ctx.beginPath(); ctx.moveTo(-13,0); ctx.lineTo(-9,-58); ctx.lineTo(9,-58); ctx.lineTo(13,0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle="rgba(255,93,120,0.5)"; ctx.fillRect(-11,-16,22,7); ctx.fillRect(-10,-36,20,7);
+  ctx.fillStyle="#ffe08a"; ctx.beginPath(); ctx.arc(0,-64,7,0,7); ctx.fill();
+  const lg=ctx.createRadialGradient(0,-64,2,0,-64,24+18*bright); lg.addColorStop(0,`rgba(255,224,138,${0.5+0.4*bright})`); lg.addColorStop(1,"rgba(255,224,138,0)");
+  ctx.fillStyle=lg; ctx.beginPath(); ctx.arc(0,-64,24+18*bright,0,7); ctx.fill();
+  ctx.restore();
+}
+function drawShip(x,y,alpha,docked){
+  ctx.save(); ctx.globalAlpha=alpha; ctx.translate(x,y);
+  ctx.fillStyle="#24406e"; ctx.beginPath(); ctx.moveTo(-12,0); ctx.lineTo(12,0); ctx.lineTo(8,7); ctx.lineTo(-8,7); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle="#93a0c8"; ctx.lineWidth=1.5; ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(0,-14); ctx.stroke();
+  ctx.fillStyle=docked?"#5dff9b":"#ffe08a"; ctx.beginPath(); ctx.moveTo(0,-14); ctx.lineTo(0,-3); ctx.lineTo(9,-8); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function harborBurst(){ const x=canvas.width*0.13, y=canvas.height*0.80-18;
+  for(let i=0;i<18;i++) harborParts.push({x,y,vx:(Math.random()-0.5)*5,vy:-Math.random()*5-1,life:1,c:Math.random()<0.5?"#ffe08a":"#5dff9b"}); }
 function drawBandGauge(val,st){
   const isSway=curBeacon().unit==="sway";
   const lo=Math.max(isSway?0:0, cfg.target-cfg.band*2.5), hi=cfg.target+cfg.band*2.5;
@@ -423,7 +472,7 @@ function applyBeaconConfig(id){ curBeaconId=id; const b=BEACONS[id];
   cfg.target=b.target; cfg.band=b.band; cfg.holdSecs=b.holdSecs; cfg.sets=(+$("cSets").value)||b.sets; cfg.restSecs=b.restSecs;
   det.configure(cfg); $("calMsg").innerHTML=b.calMsg; $("calLabel").textContent="LIVE "+(b.unit==="sway"?"SWAY":"READING"); }
 function beginQueue(ids){
-  queue=ids; qi=0; setIdx=0; totalScore=0; setResults=[]; session=[]; painPost=null;
+  queue=ids; qi=0; setIdx=0; totalScore=0; setResults=[]; session=[]; painPost=null; shipsHome=0; harborParts=[];
   applyBeaconConfig(queue[0]);
   showScreen(""); hudOn(true); phase="countdown"; countUntil=performance.now()+3000;
 }
