@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>MoveLab — Core Logic Tests</title>
+<style>
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;background:#0b0a14;color:#eef0ff;padding:20px;line-height:1.5}
+  h1{font-size:20px;color:#00dcff}
+  #summary{font-size:16px;font-weight:800;margin:10px 0;padding:8px 12px;border-radius:10px;display:inline-block}
+  .ok{background:#0f5132;color:#39ff14} .bad{background:#5c1a26;color:#ff6b81}
+  ul{list-style:none;padding:0} li{padding:5px 8px;border-bottom:1px solid #ffffff14;font-size:13px}
+  .p::before{content:"✅ ";} .f::before{content:"❌ ";color:#ff3250}
+  .f{color:#ff6b81}
+  code{color:#9aa0c0}
+</style>
+</head>
+<body>
+<h1>MoveLab / KneeQuest — Core Logic Tests</h1>
+<p><code>HoldDetector</code> (isometric hold detection). Open via a local server or GitHub Pages.</p>
+<div id="summary">running…</div>
+<ul id="list"></ul>
+
+<script type="module">
+import { HoldDetector, FB } from "../holdDetector.js";
+
+const results=[];
+const T=(name,cond)=>results.push([name,!!cond]);
+
+// helper: drive the detector at 20 fps
+function driver(det){ let t=0; return (flex,secs)=>{let s;for(let i=0;i<Math.round(secs/0.05);i++){t+=0.05;s=det.update(flex,t);}return s;}; }
+
+// 1. below-band cue + no progress
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3}); const run=driver(d);
+  const s=run(20,1.0);
+  T("Too shallow (20°) → BELOW cue, zero progress", !s.inBand && s.feedback===FB.BELOW && s.holdTime===0); }
+
+// 2. above-band cue
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3}); const run=driver(d);
+  const s=run(75,1.0);
+  T("Too deep (75°) → ABOVE cue", !s.inBand && s.feedback===FB.ABOVE); }
+
+// 3. steady hold reaches success at the right time
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3}); let t=0,at=null;
+  const run=(f,secs)=>{let s;for(let i=0;i<Math.round(secs/0.05);i++){t+=0.05;s=d.update(f,t);if(s.justSucceeded)at=+t.toFixed(2);}return s;};
+  run(20,1.0); const s=run(45,3.5);
+  T("3s in-band hold → progress=1 & success", s.progress===1 && d.score().success);
+  T("Success fires ~4.0s (1s wasted + 3s hold): "+at, at>=3.9 && at<=4.2); }
+
+// 4. scoring: stars + in-band %
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3}); const run=driver(d);
+  run(20,1.0); run(45,4.0); const sc=d.score();
+  T("Score: success, ≥2 stars, in-band% computed ("+sc.points+"pts "+sc.stars+"★ "+sc.inBandPct+"%)",
+    sc.success && sc.stars>=2 && sc.inBandPct>0); }
+
+// 5. grace tolerates a brief blip
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3,graceMs:450}); const run=driver(d);
+  run(45,2.5); const before=d.holdTime; run(70,0.2); const after=d.holdTime;
+  T("0.2s blip within grace keeps continuous hold", after>=before-1e-6); }
+
+// 6. long drift resets continuous hold
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3,graceMs:450}); const run=driver(d);
+  run(45,2.5); run(70,0.8);
+  T("0.8s drift beyond grace resets continuous hold", d.holdTime===0); }
+
+// 7. lost tracking → NO_TRACK
+{ const d=new HoldDetector({}); T("null flex → NO_TRACK cue", d.update(null,0.05).feedback===FB.NO_TRACK); }
+
+// 8. jitter cue when in-band but unsteady
+{ const d=new HoldDetector({target:45,band:15,holdSecs:5,jitterTol:4}); let t=0,s;
+  for(let i=0;i<60;i++){t+=0.05; s=d.update(45 + (i%2?10:-10), t);}  // oscillate ±10 inside band
+  T("In-band but oscillating → JITTER cue", s.feedback===FB.JITTER); }
+
+// 9. reset() clears state
+{ const d=new HoldDetector({target:45,band:10,holdSecs:3}); const run=driver(d);
+  run(45,3.5); d.reset();
+  T("reset() clears hold/success", d.holdTime===0 && d.score().success===false); }
+
+// render
+const pass=results.filter(r=>r[1]).length, total=results.length;
+const sum=document.getElementById("summary");
+sum.textContent=`${pass}/${total} passed`;
+sum.className = pass===total ? "ok" : "bad";
+const ul=document.getElementById("list");
+for(const [n,ok] of results){ const li=document.createElement("li"); li.className=ok?"p":"f"; li.textContent=n; ul.appendChild(li); }
+console.log(`Core tests: ${pass}/${total} passed`);
+</script>
+</body>
+</html>

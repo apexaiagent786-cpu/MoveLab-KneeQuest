@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0a14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<title>MoveLab — Isometric Rehab Games</title>
+<style>
+  :root{
+    --bg:#0b0a14; --panel:rgba(18,14,32,.86); --line:#2a2440;
+    --txt:#eef0ff; --muted:#9aa0c0; --cyan:#00dcff; --green:#39ff14;
+    --lime:#00ff80; --orange:#ffa500; --red:#ff3250; --purple:#dc32c8;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    overflow:hidden;overscroll-behavior:none}
+  #stage{position:fixed;inset:0;background:#000}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  #overlay{position:absolute;inset:0;width:100%;height:100%}
+
+  #topbar{position:fixed;top:0;left:0;right:0;display:flex;gap:6px;flex-wrap:wrap;
+    padding:max(8px,env(safe-area-inset-top)) 10px 8px;align-items:center;
+    background:linear-gradient(#000a,transparent);z-index:5;font-size:12px}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:20px;
+    padding:5px 10px;display:flex;gap:6px;align-items:center;backdrop-filter:blur(6px)}
+  .dot{width:8px;height:8px;border-radius:50%}
+  a.back{color:var(--cyan);text-decoration:none;font-weight:600}
+
+  #fb{position:fixed;left:50%;bottom:16%;transform:translateX(-50%);z-index:6;
+    background:#000b;border:1px solid var(--line);border-radius:22px;padding:9px 18px;
+    font-size:15px;font-weight:700;max-width:90vw;text-align:center;display:none;backdrop-filter:blur(6px)}
+
+  #hud{position:fixed;top:52px;left:8px;right:8px;z-index:4;display:none;justify-content:space-between;gap:8px;pointer-events:none}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:7px 11px;backdrop-filter:blur(8px);text-align:center;min-width:64px}
+  .stat .l{font-size:9.5px;color:var(--muted);letter-spacing:.4px}
+  .stat .v{font-size:18px;font-weight:800;line-height:1.1}
+
+  #controls{position:fixed;left:0;right:0;bottom:0;z-index:6;padding:10px 10px max(10px,env(safe-area-inset-bottom));
+    display:none;gap:8px;justify-content:center;flex-wrap:wrap;background:linear-gradient(transparent,#000c)}
+  button{background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:14px;padding:11px 14px;
+    font-size:13px;font-weight:600;display:flex;gap:6px;align-items:center;min-width:62px;justify-content:center}
+  button:active{transform:scale(.95)}
+  button.primary{background:var(--cyan);color:#001018;border-color:transparent}
+  button.warn{background:var(--orange);color:#1a1000;border-color:transparent}
+  button.ghost{background:transparent}
+
+  .screen{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    text-align:center;padding:22px;gap:12px;background:radial-gradient(circle at 50% 28%,#1a1432,#070611);overflow:auto}
+  .screen h1{margin:0;font-size:25px;background:linear-gradient(90deg,var(--cyan),var(--purple));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .screen .tag{color:var(--txt);font-size:15px;font-weight:600;margin:-6px 0 0}
+  .screen p{color:var(--muted);max-width:380px;line-height:1.5;font-size:13.5px;margin:0}
+  .big{font-size:16px;padding:15px 26px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px 16px;max-width:420px;width:100%;text-align:left}
+  .row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:9px 0}
+  .row label{font-size:13px;color:var(--txt)}
+  .row .val{font-size:13px;color:var(--cyan);font-weight:700;min-width:54px;text-align:right}
+  input[type=range]{flex:1;accent-color:var(--cyan)}
+  /* exercise tier picker */
+  .tiers{display:flex;gap:10px;max-width:420px;width:100%}
+  .tier{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 10px;cursor:pointer;text-align:center}
+  .tier.sel{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan) inset}
+  .tier .tn{font-size:14px;font-weight:700}
+  .tier .td{font-size:11px;color:var(--muted);margin-top:3px}
+  .tier .lvl{font-size:10px;font-weight:700;letter-spacing:.5px;padding:2px 8px;border-radius:10px;display:inline-block;margin-bottom:5px}
+  .lvl.easy{background:#1e9e5a33;color:var(--green)} .lvl.hard{background:#ffa50033;color:var(--orange)}
+  #loadmsg{color:var(--cyan);font-size:13px;min-height:18px;max-width:340px}
+  .spinner{width:34px;height:34px;border:3px solid #ffffff20;border-top-color:var(--cyan);border-radius:50%;animation:spin 1s linear infinite;display:none}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .safety{font-size:11.5px;color:var(--orange);max-width:380px;line-height:1.45}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  td,th{text-align:left;padding:5px 6px;border-bottom:1px solid #ffffff12}
+  th{color:var(--muted);font-weight:600}
+  .stars{color:var(--orange);font-size:15px}
+  .tiles{display:flex;gap:8px;max-width:420px;width:100%}
+  .tile{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:9px;text-align:center}
+  .tile .tv{font-size:20px;font-weight:800;color:var(--cyan)} .tile .tl{font-size:10px;color:var(--muted)}
+  .toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:40;background:#000d;border:1px solid var(--line);
+    border-radius:20px;padding:8px 16px;font-size:13px;opacity:0;transition:opacity .3s;text-align:center;max-width:90vw}
+  .countbig{position:fixed;inset:0;z-index:8;display:none;align-items:center;justify-content:center;font-size:120px;font-weight:900;
+    color:var(--cyan);text-shadow:0 0 30px #00dcff88;pointer-events:none}
+  .linkrow{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:13px}
+  .linkrow a{color:var(--muted);text-decoration:none;cursor:pointer}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <video id="video" playsinline autoplay muted></video>
+  <canvas id="overlay"></canvas>
+</div>
+
+<div id="topbar">
+  <a class="back" href="index.html">← Tracker</a>
+  <div class="chip"><span class="dot" id="poseDot" style="background:var(--red)"></span><span id="poseTxt">No pose</span></div>
+  <div class="chip"><span id="viewTxt">View: —</span></div>
+  <div class="chip"><span id="fpsTxt">— fps</span></div>
+</div>
+
+<div id="hud">
+  <div class="stat"><div class="l">SET</div><div class="v" id="hSet">1/3</div></div>
+  <div class="stat"><div class="l">HOLD</div><div class="v" id="hHold">0.0s</div></div>
+  <div class="stat"><div class="l">SCORE</div><div class="v" id="hScore">0</div></div>
+</div>
+
+<div id="fb"></div>
+<div class="countbig" id="countbig"></div>
+
+<div id="controls">
+  <button id="btnStop" class="warn">■ End set</button>
+  <button id="btnCal2" class="primary">🎯 Re-cal</button>
+</div>
+
+<!-- MENU -->
+<div class="screen" id="menu">
+  <h1>Isometric Rehab</h1>
+  <div class="tag" id="mTag">Choose an exercise</div>
+  <div class="tiers" id="tiers">
+    <div class="tier" data-ex="seated">
+      <span class="lvl easy">EASY</span>
+      <div class="tn">Seated Extension Hold</div>
+      <div class="td">Straighten & hold near full extension. Lowest load — earliest phase.</div>
+    </div>
+    <div class="tier" data-ex="wallsit">
+      <span class="lvl hard">HARDER</span>
+      <div class="tn">Wall-Sit Guardian</div>
+      <div class="td">Hold a wall-sit to charge the shield. Builds quad endurance.</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row"><label id="lTarget">Target knee bend</label><input id="cTarget" type="range" min="0" max="90" step="5" value="60"><span class="val" id="vTarget">60°</span></div>
+    <div class="row"><label>Zone width (±)</label><input id="cBand" type="range" min="6" max="20" step="1" value="12"><span class="val" id="vBand">12°</span></div>
+    <div class="row"><label>Hold time</label><input id="cHold" type="range" min="3" max="20" step="1" value="10"><span class="val" id="vHold">10s</span></div>
+    <div class="row"><label>Sets</label><input id="cSets" type="range" min="1" max="7" step="1" value="3"><span class="val" id="vSets">3</span></div>
+    <div class="row"><label>Rest between</label><input id="cRest" type="range" min="5" max="40" step="5" value="15"><span class="val" id="vRest">15s</span></div>
+  </div>
+  <p class="safety" id="safety">⚠ Keep it pain-free (stop if pain ≥5/10). Have support within reach.</p>
+  <button id="btnStart" class="primary big">▶ Start</button>
+  <div class="linkrow"><a id="lnkProgress">📈 My progress</a></div>
+  <div class="spinner" id="spin"></div>
+  <div id="loadmsg"></div>
+</div>
+
+<!-- CALIBRATE -->
+<div class="screen" id="calib" style="display:none">
+  <h1>Calibrate</h1>
+  <p id="calMsg">Stand <b>side-on</b>, whole body in frame. Straighten the leg, tap <b>Set 0°</b>, then begin.</p>
+  <div class="card" style="text-align:center">
+    <div style="color:var(--muted);font-size:12px">LIVE KNEE BEND</div>
+    <div id="calVal" style="font-size:46px;font-weight:800;color:var(--cyan)">—°</div>
+    <div id="calConf" style="color:var(--muted);font-size:12px">confidence —</div>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button id="btnSetZero" class="primary">🎯 Set 0°</button>
+    <button id="btnBegin" class="primary big">✓ Begin holds</button>
+    <button id="btnBackMenu" class="ghost">← Menu</button>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<!-- RESULTS -->
+<div class="screen" id="results" style="display:none">
+  <h1>Session Report</h1>
+  <div class="card" id="resBody"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+    <button id="btnCsv">⬇ CSV</button>
+    <button id="btnJson">⬇ JSON</button>
+    <button id="btnAgain" class="primary">↻ Play again</button>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div class="screen" id="progress" style="display:none">
+  <h1>My Progress</h1>
+  <div class="tiles" id="progTiles"></div>
+  <div class="card" id="progBody"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+    <button id="btnClearHist" class="ghost">Clear history</button>
+    <button id="btnProgBack" class="primary">← Menu</button>
+  </div>
+</div>
+
+<script type="module">
+import { FilesetResolver, PoseLandmarker } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12";
+import { OneEuro, detectView, KneeMeter, KNEES, vis, VIS_DRAW } from "./core.js";
+import { HoldDetector, FB } from "./holdDetector.js";
+import { loadSessions, saveSession, clearSessions, summarize } from "./storage.js";
+
+const POSE_MODEL="https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task";
+const WASM="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.12/wasm";
+const CONNECTIONS=PoseLandmarker.POSE_CONNECTIONS;
+const $=id=>document.getElementById(id);
+const video=$("video"), canvas=$("overlay"), ctx=canvas.getContext("2d");
+
+// ── evidence-based exercise tiers ──
+// Wall-sit early-rehab ~60° (up to 90° max quad demand); seated extension hold
+// = near-full-extension quad set (advantage for stiffness, lowest load).
+const EXERCISES={
+  seated:{ key:"seated", name:"Seated Extension Hold", level:"EASY",
+    target:10, band:10, holdSecs:6, sets:3, restSecs:12, min:0, max:45,
+    targetLabel:"Extension hold (° bend)",
+    calMsg:"Sit tall, side-on to the camera. Straighten the leg fully, tap <b>Set 0°</b>, then begin.",
+    safety:"⚠ Sit supported. Straighten to near-full extension and hold — no bouncing. Stop if pain ≥5/10.",
+    cues:{below:"Ease back slightly", above:"Straighten your knee more"} },
+  wallsit:{ key:"wallsit", name:"Wall-Sit Guardian", level:"HARDER",
+    target:60, band:12, holdSecs:10, sets:3, restSecs:15, min:30, max:90,
+    targetLabel:"Wall-sit bend (° knee)",
+    calMsg:"Stand <b>side-on</b>, 2–3 m back, whole body in frame. Straighten the leg, tap <b>Set 0°</b>, then begin.",
+    safety:"⚠ Sit back against a wall, chair within reach. Start ~60° (deeper = more load, up to 90°). Stop if pain ≥5/10.",
+    cues:{below:"Bend a little deeper", above:"Ease up — too deep"} },
+};
+let exKey="wallsit";
+const cfg={target:60,band:12,holdSecs:10,sets:3,restSecs:15};
+
+// ── state ──
+let landmarker=null, stream=null, facing="environment", mirror=false, delegate="GPU";
+let running=false, lastT=performance.now(), fps=0, lastVideoTime=-1, lastRes=null;
+let cover={scale:1,ox:0,oy:0};
+const fX=[],fY=[]; for(let i=0;i<33;i++){fX[i]=new OneEuro();fY[i]=new OneEuro();}
+const meter=new KneeMeter();
+let lastMeasured={L:null,R:null};
+const det=new HoldDetector(cfg);
+let phase="menu", setIdx=0, totalScore=0, setResults=[], session=[], holdStart=0, restUntil=0, countUntil=0;
+
+// ── helpers ──
+function toast(m){const t=$("toast");if(!t)return;t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,2000);}
+function showScreen(id){for(const s of ["menu","calib","results","progress"])$(s).style.display=(s===id)?"flex":"none";}
+function hudOn(on){$("hud").style.display=on?"flex":"none";$("controls").style.display=on?"flex":"none";}
+
+// ── tier selection ──
+function selectExercise(key){
+  exKey=key; const ex=EXERCISES[key];
+  document.querySelectorAll(".tier").forEach(t=>t.classList.toggle("sel",t.dataset.ex===key));
+  // apply evidence-based defaults + slider ranges
+  const tEl=$("cTarget"); tEl.min=ex.min; tEl.max=ex.max; tEl.value=ex.target;
+  $("cBand").value=ex.band; $("cHold").value=ex.holdSecs; $("cSets").value=ex.sets; $("cRest").value=ex.restSecs;
+  $("lTarget").textContent=ex.targetLabel;
+  $("safety").innerHTML=ex.safety;
+  $("mTag").textContent=ex.name+" · "+ex.level;
+  syncCfg();
+}
+const sliders=[["cTarget","vTarget","°","target"],["cBand","vBand","°","band"],["cHold","vHold","s","holdSecs"],["cSets","vSets","","sets"],["cRest","vRest","s","restSecs"]];
+function syncCfg(){ for(const [id,vid,suf,key] of sliders){cfg[key]=+$(id).value;$(vid).textContent=$(id).value+suf;} det.configure(cfg); }
+for(const [id,vid,suf,key] of sliders){ $(id).addEventListener("input",syncCfg); }
+document.querySelectorAll(".tier").forEach(t=>t.onclick=()=>selectExercise(t.dataset.ex));
+
+// ── camera / model ──
+async function loadModel(){
+  $("loadmsg").textContent="Loading tracking model… (first time ~10 MB)";
+  const vision=await FilesetResolver.forVisionTasks(WASM);
+  const opts=del=>({baseOptions:{modelAssetPath:POSE_MODEL,delegate:del},runningMode:"VIDEO",numPoses:1,
+    minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+  try{ landmarker=await PoseLandmarker.createFromOptions(vision,opts("GPU")); delegate="GPU"; }
+  catch(e){ landmarker=await PoseLandmarker.createFromOptions(vision,opts("CPU")); delegate="CPU"; }
+}
+function applyMirror(){ video.style.transform=mirror?"scaleX(-1)":"none"; }
+async function startCamera(){
+  if(stream)stream.getTracks().forEach(t=>t.stop());
+  mirror=(facing==="user"); applyMirror();
+  let s; try{ s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:facing},width:{ideal:1280},height:{ideal:720}}}); }
+  catch(e){ s=await navigator.mediaDevices.getUserMedia({audio:false,video:true}); }
+  stream=s; video.srcObject=s;
+  await new Promise(r=>{ if(video.readyState>=1)r(); else video.onloadedmetadata=()=>r(); });
+  await video.play(); resize();
+}
+function resize(){canvas.width=canvas.clientWidth;canvas.height=canvas.clientHeight;computeCover();}
+function computeCover(){const vw=video.videoWidth,vh=video.videoHeight;if(!vw||!vh){cover={scale:1,ox:0,oy:0};return;}
+  const s=Math.max(canvas.width/vw,canvas.height/vh);cover={scale:s,ox:(canvas.width-vw*s)/2,oy:(canvas.height-vh*s)/2,vw,vh};}
+window.addEventListener("resize",resize);
+window.addEventListener("orientationchange",()=>setTimeout(resize,300));
+function px(sx,sy){if(!cover.vw)computeCover();const nx=mirror?(1-sx):sx;return [cover.ox+nx*cover.vw*cover.scale,cover.oy+sy*cover.vh*cover.scale];}
+
+// ── loop ──
+function loop(){
+  if(!running)return;
+  const now=performance.now();
+  if(landmarker && video.readyState>=2){
+    if(!canvas.width||canvas.width!==canvas.clientWidth)resize();
+    if(video.currentTime!==lastVideoTime){lastVideoTime=video.currentTime;try{lastRes=landmarker.detectForVideo(video,now);}catch(e){}}
+    fps=fps*0.9+(1000/Math.max(now-lastT,1))*0.1; lastT=now;
+    frame(lastRes,now);
+  }
+  requestAnimationFrame(loop);
+}
+function frame(res,now){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const have=res&&res.landmarks&&res.landmarks.length>0;
+  $("poseDot").style.background=have?"var(--green)":"var(--red)";
+  $("poseTxt").textContent=have?"Pose OK":"No pose";
+  let measured={L:null,R:null,activeFlex:null,activeConf:0,view:"—"};
+  if(have){
+    const raw=res.landmarks[0]; const wlm=(res.worldLandmarks&&res.worldLandmarks[0])||raw; const t=now/1000;
+    const sm=raw.map((p,i)=>({x:fX[i].filt(p.x,t),y:fY[i].filt(p.y,t),z:p.z,visibility:vis(p)}));
+    const [vl,vc]=detectView(sm); const asp=(video.videoWidth/video.videoHeight)||(16/9);
+    measured=meter.measure(sm,wlm,vl,asp); lastMeasured=measured;
+    $("viewTxt").textContent="View: "+(measured.near?vl+" ("+measured.near+")":vl); $("viewTxt").style.color=vc;
+    drawSkeleton(sm,measured);
+  }else if(phase==="holding"||phase==="rest"){ drawCenter("Step into frame — side-on","#ffa500"); }
+  $("fpsTxt").textContent=Math.round(fps)+" fps";
+
+  const flex=measured.activeFlex, conf=measured.activeConf;
+  const trackable = flex!=null && conf>=0.55;
+
+  if(phase==="countdown"){
+    const rem=Math.ceil((countUntil-now)/1000);
+    if(rem<=0){ phase="holding"; det.reset(); holdStart=now; $("countbig").style.display="none"; }
+    else{ $("countbig").style.display="flex"; $("countbig").textContent=rem; }
+  } else { $("countbig").style.display="none"; }
+
+  if(phase==="holding"){
+    const st=det.update(trackable?flex:null, now/1000);
+    session.push({t:+((now-holdStart)/1000).toFixed(2),set:setIdx+1,flex:trackable?+flex.toFixed(1):null,inBand:st.inBand});
+    drawGuardian(st); drawBandGauge(flex,st); updateHud(st); setFeedback(st.feedback,st.inBand);
+    if(st.justSucceeded){ endSet(true); }
+    else if(st.timeTotal>Math.max(cfg.holdSecs*4,30)){ endSet(false); }
+  }
+  if(phase==="rest"){
+    const rem=Math.ceil((restUntil-now)/1000);
+    drawCenter("Rest — "+Math.max(rem,0)+"s   (next set "+(setIdx+1)+"/"+cfg.sets+")","#00dcff");
+    if(rem<=0){ phase="countdown"; countUntil=now+3000; }
+  }
+  if(phase==="calibrate"){ $("calVal").textContent=(flex!=null?Math.round(flex):"—")+"°"; $("calConf").textContent="confidence "+Math.round(conf*100)+"%"; }
+}
+
+// ── drawing ──
+function drawSkeleton(sm,measured){
+  ctx.lineWidth=4;ctx.lineCap="round";ctx.strokeStyle="#00dcff77";
+  for(const c of CONNECTIONS){const a=sm[c.start],b=sm[c.end];if(a.visibility<VIS_DRAW||b.visibility<VIS_DRAW)continue;
+    const pa=px(a.x,a.y),pb=px(b.x,b.y);ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke();}
+  for(let i=0;i<sm.length;i++){if(sm[i].visibility<VIS_DRAW)continue;const [x,y]=px(sm[i].x,sm[i].y);
+    ctx.beginPath();ctx.arc(x,y,4,0,7);ctx.fillStyle="#00dcff";ctx.fill();}
+  const act=measured.active;
+  if(act&&measured[act]){const K=KNEES[act],k=sm[K.knee],[x,y]=px(k.x,k.y);
+    ctx.beginPath();ctx.arc(x,y,10,0,7);ctx.strokeStyle=K.color;ctx.lineWidth=3;ctx.stroke();}
+}
+function drawGuardian(st){
+  const cx=canvas.width/2, cy=canvas.height/2, R=Math.min(canvas.width,canvas.height)*0.17;
+  ctx.beginPath();ctx.arc(cx,cy,R,0,7);ctx.strokeStyle="#ffffff22";ctx.lineWidth=12;ctx.stroke();
+  const col=st.inBand?(st.feedback===FB.JITTER?"#ffa500":"#39ff14"):"#ff3250";
+  ctx.beginPath();ctx.arc(cx,cy,R,-Math.PI/2,-Math.PI/2+st.progress*2*Math.PI);ctx.strokeStyle=col;ctx.lineWidth=12;ctx.lineCap="round";ctx.stroke();
+  ctx.fillStyle="#fff";ctx.textAlign="center";ctx.textBaseline="middle";ctx.font="900 34px sans-serif";ctx.fillText(st.holdTime.toFixed(1)+"s",cx,cy-6);
+  ctx.font="600 13px sans-serif";ctx.fillStyle="#9aa0c0";ctx.fillText("of "+cfg.holdSecs+"s hold",cx,cy+22);
+  ctx.fillStyle=col;ctx.font="700 14px sans-serif";ctx.fillText("🛡 "+Math.round(st.progress*100)+"%",cx,cy+R+22);
+}
+function drawBandGauge(flex,st){
+  const x=26, top=canvas.height*0.28, h=canvas.height*0.44, maxA=120;
+  const yOf=a=>top+h*(1-Math.min(a,maxA)/maxA);
+  ctx.fillStyle="#ffffff14";ctx.fillRect(x-10,top,20,h);
+  const yb1=yOf(cfg.target+cfg.band), yb2=yOf(cfg.target-cfg.band);
+  ctx.fillStyle="#39ff1455";ctx.fillRect(x-10,yb1,20,yb2-yb1);
+  ctx.strokeStyle="#39ff14";ctx.lineWidth=1;ctx.strokeRect(x-10,yb1,20,yb2-yb1);
+  const yt=yOf(cfg.target);ctx.strokeStyle="#39ff14";ctx.beginPath();ctx.moveTo(x-14,yt);ctx.lineTo(x+14,yt);ctx.stroke();
+  if(flex!=null){const y=yOf(flex);ctx.fillStyle=st&&st.inBand?"#39ff14":"#ff3250";
+    ctx.beginPath();ctx.moveTo(x+12,y);ctx.lineTo(x+24,y-6);ctx.lineTo(x+24,y+6);ctx.fill();
+    ctx.fillStyle="#fff";ctx.font="700 13px sans-serif";ctx.textAlign="left";ctx.textBaseline="middle";ctx.fillText(Math.round(flex)+"°",x+28,y);}
+}
+function drawCenter(text,col){ctx.font="bold 16px sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+  const w=ctx.measureText(text).width;ctx.fillStyle="#000a";ctx.fillRect(canvas.width/2-w/2-10,canvas.height/2-16,w+20,32);
+  ctx.fillStyle=col;ctx.fillText(text,canvas.width/2,canvas.height/2);}
+function setFeedback(code,inBand){
+  const ex=EXERCISES[exKey];
+  const MAP={[FB.NO_TRACK]:["Step into frame","#ffa500"],
+    [FB.BELOW]:[ex.cues.below,"#00dcff"],[FB.ABOVE]:[ex.cues.above,"#ffa500"],
+    [FB.JITTER]:["Hold steady","#ffa500"],[FB.GOOD]:["Great — hold it! 🛡","#39ff14"]};
+  const el=$("fb"); const [msg,col]=MAP[code]||["",""]; el.style.display="block"; el.textContent=msg; el.style.color=col;
+  el.style.borderColor=inBand?"#39ff1466":"var(--line)";
+}
+function updateHud(st){$("hSet").textContent=(setIdx+1)+"/"+cfg.sets;$("hHold").textContent=st.holdTime.toFixed(1)+"s";$("hScore").textContent=totalScore;}
+
+// ── transitions ──
+function endSet(){
+  const r=det.score(); r.set=setIdx+1; totalScore+=r.points; setResults.push(r);
+  $("hScore").textContent=totalScore; setIdx++; $("fb").style.display="none";
+  if(setIdx>=cfg.sets){ finish(); } else { phase="rest"; restUntil=performance.now()+cfg.restSecs*1000; }
+}
+function finish(){
+  phase="done"; hudOn(false);
+  const tot=setResults.reduce((a,b)=>a+b.timeInBand,0);
+  const best=setResults.reduce((a,b)=>Math.max(a,b.peakHold),0);
+  const stars=setResults.length?Math.round(setResults.reduce((a,b)=>a+b.stars,0)/setResults.length):0;
+  const rows=setResults.map(r=>`<tr><td>${r.set}</td><td>${r.peakHold}s</td><td>${r.timeInBand}s</td><td>${r.inBandPct}%</td><td>${r.success?"✓":"—"}</td><td>${r.points}</td></tr>`).join("");
+  $("resBody").innerHTML=`
+    <div style="text-align:center;margin-bottom:8px">
+      <div style="font-size:12px;color:var(--muted)">${EXERCISES[exKey].name.toUpperCase()} · TOTAL SCORE</div>
+      <div style="font-size:40px;font-weight:800;color:var(--cyan)">${totalScore}</div>
+      <div class="stars">${"★".repeat(stars)}${"☆".repeat(3-stars)}</div>
+    </div>
+    <table><tr><th>Set</th><th>Best hold</th><th>In-band</th><th>%</th><th>Done</th><th>Pts</th></tr>${rows}</table>
+    <p style="margin-top:8px;font-size:12px;color:var(--muted)">Best hold ${best.toFixed(1)}s · total in-band ${tot.toFixed(1)}s · target ${cfg.target}° ±${cfg.band}°</p>`;
+  // persist to local history (progress tracking)
+  saveSession({date:new Date().toISOString(), exercise:exKey, exerciseName:EXERCISES[exKey].name,
+    config:{...cfg}, totalScore, stars, bestHold:+best.toFixed(1), totalInBand:+tot.toFixed(1),
+    sets:setResults.map(r=>({set:r.set,peakHold:r.peakHold,inBandPct:r.inBandPct,success:r.success,points:r.points}))});
+  showScreen("results");
+}
+
+// ── progress view ──
+function renderProgress(){
+  const all=loadSessions(); const s=summarize(all);
+  $("progTiles").innerHTML=`
+    <div class="tile"><div class="tv">${s.count}</div><div class="tl">sessions</div></div>
+    <div class="tile"><div class="tv">${s.thisWeek}</div><div class="tl">this week</div></div>
+    <div class="tile"><div class="tv">${s.bestHold.toFixed(0)}s</div><div class="tl">best hold</div></div>
+    <div class="tile"><div class="tv">${s.streak}</div><div class="tl">day streak</div></div>`;
+  if(!all.length){ $("progBody").innerHTML='<p style="color:var(--muted)">No sessions yet — play a set and it appears here.</p>'; return; }
+  const recent=all.slice(-8).reverse();
+  const rows=recent.map(r=>{const d=new Date(r.date);
+    return `<tr><td>${d.toLocaleDateString()} ${d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}</td>
+      <td>${r.exerciseName.split(' ')[0]}</td><td>${(r.bestHold||0).toFixed(0)}s</td><td>${r.totalScore}</td><td class="stars">${"★".repeat(r.stars||0)}</td></tr>`;}).join("");
+  $("progBody").innerHTML=`<table><tr><th>When</th><th>Exercise</th><th>Best</th><th>Score</th><th></th></tr>${rows}</table>`;
+}
+
+// ── export ──
+function exportCSV(){const lines=["time_s,set,knee_flex_deg,in_band"];for(const s of session)lines.push(`${s.t},${s.set},${s.flex??""},${s.inBand?1:0}`);
+  download("movelab_"+exKey+"_"+Date.now()+".csv","text/csv",lines.join("\n"));}
+function exportJSON(){download("movelab_"+exKey+"_"+Date.now()+".json","application/json",
+  JSON.stringify({recordedAt:new Date().toISOString(),game:exKey,config:cfg,totalScore,sets:setResults,samples:session},null,1));}
+function download(name,type,data){const b=new Blob([data],{type}),u=URL.createObjectURL(b);
+  const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+
+// ── controls ──
+$("btnStart").onclick=async()=>{
+  $("btnStart").style.display="none";$("spin").style.display="block";
+  try{ if(!landmarker)await loadModel(); $("loadmsg").textContent="Starting camera…"; await startCamera();
+    running=true; loop(); det.configure(cfg); $("calMsg").innerHTML=EXERCISES[exKey].calMsg;
+    phase="calibrate"; showScreen("calib");
+  }catch(e){ $("spin").style.display="none";$("btnStart").style.display="block";$("loadmsg").textContent="Error: "+(e.message||e); }
+};
+$("btnSetZero").onclick=()=>{const d=meter.calibrate(lastMeasured);toast(d.length?("Zeroed "+d.join(" & ")):"Hold leg straight & in view, then tap");};
+$("btnBegin").onclick=()=>{ showScreen(""); setIdx=0;totalScore=0;setResults=[];session=[]; hudOn(true); phase="countdown"; countUntil=performance.now()+3000; };
+$("btnBackMenu").onclick=()=>{ phase="menu"; showScreen("menu"); };
+$("btnStop").onclick=()=>{ if(phase==="holding") endSet(false); };
+$("btnCal2").onclick=()=>{ meter.calibrate(lastMeasured); toast("Re-zeroed"); };
+$("btnCsv").onclick=exportCSV; $("btnJson").onclick=exportJSON;
+$("btnAgain").onclick=()=>{ phase="menu"; hudOn(false); showScreen("menu"); };
+$("lnkProgress").onclick=()=>{ renderProgress(); showScreen("progress"); };
+$("btnProgBack").onclick=()=>showScreen("menu");
+$("btnClearHist").onclick=()=>{ if(confirm("Clear all saved sessions?")){ clearSessions(); renderProgress(); } };
+
+selectExercise("wallsit");
+if(!window.isSecureContext && location.hostname!=="localhost"){ $("loadmsg").textContent="⚠ Open over HTTPS (e.g. GitHub Pages) for camera access."; }
+</script>
+</body>
+</html>
