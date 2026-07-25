@@ -109,18 +109,42 @@
 
 <!-- CALIBRATE (camera) -->
 <div class="screen" id="calib" style="display:none">
-  <h1>Find your range</h1>
-  <p id="calMsg">Get comfortable in view. When the countdown starts, gently move your knee
-     through its <b>full comfortable range</b> — bend and straighten a few times.</p>
+  <h1>Get in position</h1>
+  <!-- positioning guide -->
+  <div class="card" style="display:flex;gap:12px;align-items:center">
+    <svg width="86" height="86" viewBox="0 0 86 86" style="flex:none">
+      <rect x="1" y="1" width="84" height="84" rx="10" fill="#0e1430" stroke="#2a3468"/>
+      <!-- camera -->
+      <rect x="6" y="34" width="14" height="18" rx="3" fill="#37e1ff"/><circle cx="13" cy="43" r="4" fill="#0e1430"/>
+      <path d="M20 40 L30 43 L20 46 Z" fill="#37e1ff"/>
+      <!-- side-on figure, whole leg visible -->
+      <circle cx="58" cy="20" r="6" fill="#ffe08a"/>
+      <line x1="58" y1="26" x2="58" y2="46" stroke="#ffe08a" stroke-width="3"/>
+      <line x1="58" y1="46" x2="48" y2="62" stroke="#5dff9b" stroke-width="3"/>
+      <line x1="48" y1="62" x2="52" y2="78" stroke="#5dff9b" stroke-width="3"/>
+      <circle cx="58" cy="46" r="3" fill="#ff5d78"/><circle cx="48" cy="62" r="3" fill="#ff5d78"/><circle cx="52" cy="78" r="3" fill="#ff5d78"/>
+    </svg>
+    <div style="font-size:12.5px;color:var(--muted);line-height:1.5">
+      Sit or stand <b>side-on</b> to the camera. Prop the device so it sees your
+      <b style="color:#5dff9b">whole leg — hip → knee → ankle</b> (the pink dots). Stand back
+      ~2–3 m in good light. Watch the badge below turn <b style="color:#5dff9b">green</b>.
+    </div>
+  </div>
+  <div id="trackBadge" class="chip" style="font-size:13px;font-weight:700;color:var(--amber)">📷 Looking for your leg…</div>
   <div class="card" style="text-align:center">
     <div style="color:var(--muted);font-size:12px">LIVE KNEE</div>
     <div id="calVal" style="font-size:44px;font-weight:800;color:var(--cyan)">—°</div>
     <div id="calRange" style="color:var(--muted);font-size:12px">range —</div>
   </div>
+  <p id="calMsg" style="font-size:13px">Tap <b>Learn my range</b>, then gently bend &amp; straighten your knee a few times.</p>
   <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
     <button id="btnCalStart" class="primary big">▶ Learn my range (6s)</button>
     <button id="btnCalGo" class="primary big" style="display:none">✓ Fly!</button>
     <button id="btnCalSkip" class="ghost">Skip →</button>
+  </div>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center">
+    <button id="btnInvert" class="ghost">⇅ Invert direction</button>
+    <button id="btnSwitchCal" class="ghost">🔄 Switch camera</button>
     <button id="btnBackMenu" class="ghost">← Menu</button>
   </div>
   <div class="toast" id="toast"></div>
@@ -179,7 +203,7 @@ let landmarker=null, stream=null, facing="user", camDevices=[], camIdx=0;
 let lastVideoTime=-1, lastRes=null;
 const fX=[],fY=[]; for(let i=0;i<33;i++){fX[i]=new OneEuro();fY[i]=new OneEuro();}
 const meter=new KneeMeter();
-let flex=null, flexSmooth=new OneEuro(0.6,0.10), calLo=0, calHi=160, warmMin=999, warmMax=-999, warmUntil=0;
+let flex=null, flexConf=0, invert=false, flexSmooth=new OneEuro(0.6,0.10), calLo=0, calHi=160, warmMin=999, warmMax=-999, warmUntil=0;
 
 function toast(m){const t=$("toast");if(!t)return;t.textContent=m;t.style.opacity=1;clearTimeout(t._h);t._h=setTimeout(()=>t.style.opacity=0,1800);}
 function showScreen(id){for(const s of ["menu","calib","win","progress"])$(s).style.display=(s===id)?"flex":"none";}
@@ -253,7 +277,7 @@ function loop(){ if(!running){return;} const now=performance.now(); rafId=reques
 // one simulation step (separated from rAF so it can be unit-driven)
 function step(dt,now){
   if(mode==="mouse") controlNorm=pointerNorm;
-  else controlNorm = flex==null ? controlNorm : clamp01((calHi - flex)/Math.max(calHi-calLo,1)); // straighter(lower flex)=up
+  else if(flex!=null){ const n=clamp01((calHi-flex)/Math.max(calHi-calLo,1)); controlNorm = invert ? 1-n : n; } // straighter(lower flex)=up
   updateReps();
   if(phase==="countdown"){ const rem=Math.ceil((countUntil-now)/1000);
     $("hint").style.display="block"; $("hint").style.color="#37e1ff";
@@ -396,10 +420,16 @@ function poseLoop(){ if(!camActive){return;} requestAnimationFrame(poseLoop);
   if(lastRes&&lastRes.landmarks&&lastRes.landmarks[0]){ const raw=lastRes.landmarks[0]; const wlm=(lastRes.worldLandmarks&&lastRes.worldLandmarks[0])||raw; const t=now/1000;
     const sm=raw.map((p,i)=>({x:fX[i].filt(p.x,t),y:fY[i].filt(p.y,t),z:p.z,visibility:vis(p)}));
     const [vl]=detectView(sm); const asp=(video.videoWidth/video.videoHeight)||(16/9);
-    const mres=meter.measure(sm,wlm,vl,asp); flex = mres.activeFlex!=null ? flexSmooth.filt(mres.activeFlex,t) : flex;
+    const mres=meter.measure(sm,wlm,vl,asp);
+    if(mres.activeFlex!=null){ flex=flexSmooth.filt(mres.activeFlex,t); flexConf=mres.activeConf; } else { flexConf=Math.max(0,(mres.activeConf||0)); }
+    if(mres.activeFlex==null) flex=null;
     if(phase==="warmup" && flex!=null){ warmMin=Math.min(warmMin,flex); warmMax=Math.max(warmMax,flex); $("calRange").textContent=`range ${Math.round(warmMin)}–${Math.round(warmMax)}°`; }
-    if(phase==="calib"||phase==="warmup") $("calVal").textContent=(flex!=null?Math.round(flex):"—")+"°";
-  } else { flex=null; } }
+    if(phase==="calib"||phase==="warmup"){ $("calVal").textContent=(flex!=null?Math.round(flex):"—")+"°"; updateTrackBadge(); }
+  } else { flex=null; flexConf=0; if(phase==="calib"||phase==="warmup")updateTrackBadge(); } }
+function updateTrackBadge(){ const b=$("trackBadge"); if(!b)return;
+  if(flex!=null && flexConf>=0.6){ b.textContent="✓ Leg tracked ("+Math.round(flexConf*100)+"%)"; b.style.color="var(--green)"; }
+  else if(flexConf>=0.25){ b.textContent="⚠ Move back — show your whole leg (hip→ankle)"; b.style.color="var(--amber)"; }
+  else { b.textContent="📷 Step into frame, side-on to the camera"; b.style.color="var(--amber)"; } }
 
 // ── warm-up calibration ──
 $("btnCalStart").onclick=()=>{ warmMin=999;warmMax=-999; phase="warmup"; warmUntil=performance.now()+6000; $("calMsg").innerHTML="Now — gently <b>bend and straighten</b> your knee a few times through a comfortable range…";
@@ -409,6 +439,8 @@ function endWarm(){ if(warmMax-warmMin<12){ toast("Try a bigger range"); phase="
   $("calMsg").innerHTML=`Range learned: <b>${Math.round(calLo)}–${Math.round(calHi)}°</b>. Straighten to fly up, bend to come down. Ready?`; }
 $("btnCalGo").onclick=()=>{ beginLevel(); };
 $("btnCalSkip").onclick=()=>{ if(calHi-calLo<12){ calLo=0; calHi=120; } beginLevel(); };  // fallback: sensible default range
+$("btnInvert").onclick=()=>{ invert=!invert; toast("Direction "+(invert?"inverted (bend = up)":"normal (straighten = up)")); };
+$("btnSwitchCal").onclick=switchCam;
 
 // ── pointer (mouse/touch) control ──
 function ptr(e){ const y=(e.touches?e.touches[0].clientY:e.clientY); pointerNorm=clamp01(1-(y-playTop)/playH); }
