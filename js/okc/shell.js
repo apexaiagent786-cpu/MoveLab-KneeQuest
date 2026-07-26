@@ -75,7 +75,7 @@ function openCalib(){ showScreen("calibScreen"); $("calCamRow").style.display="f
   $("calGo").onclick=startGame;
 }
 // lightweight pose loop during calibration (before game starts)
-function camLoop(){ if(!camReady) return; requestAnimationFrame(camLoop); const now=performance.now(); pose.frame(now);
+function camLoop(){ if(!camReady || scene!=="calibScreen") return; requestAnimationFrame(camLoop); const now=performance.now(); pose.frame(now);
   if(scene==="calibScreen"){ const f=pose.flexZeroed(); $("calNow").textContent = f!=null? Math.round(f)+"°":"—";
     const b=$("calZone"); if(f==null){ b.textContent="📷 Move so your whole leg shows"; b.style.color="#ffb84d"; }
     else { b.textContent="✓ Tracking — Set 0° when your leg is straight"; b.style.color="#8affc0"; }
