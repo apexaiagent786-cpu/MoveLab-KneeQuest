@@ -5,6 +5,7 @@ import { PoseController } from "./pose.js";
 import { OKCSave, rankFor } from "./save.js";
 import { Audio } from "../arcade/audio.js";
 import QUAD from "./games/quad.js";
+import SLR from "./games/slr.js";
 
 const $=id=>document.getElementById(id);
 const stage=$("stage"), sctx=stage.getContext("2d"), video=$("video"), pip=$("pip"), pctx=pip.getContext("2d");
@@ -12,7 +13,7 @@ const stage=$("stage"), sctx=stage.getContext("2d"), video=$("video"), pip=$("pi
 // game registry — OKC order. Only built games are playable; rest are "coming soon".
 const GAMES=[
   { def:QUAD },
-  { soon:true, id:"slr",  name:"Lift-Off",   emoji:"🎈", exercise:"Straight Leg Raise" },
+  { def:SLR },
   { soon:true, id:"heel", name:"Trace the Arc", emoji:"🌈", exercise:"Heel Slides / ROM" },
   { soon:true, id:"tke",  name:"Lock the Slot", emoji:"🔩", exercise:"Terminal Knee Ext." },
   { soon:true, id:"tempo",name:"Tempo Lift",  emoji:"⏱️", exercise:"Resisted Knee Ext." },
@@ -75,7 +76,9 @@ function openCalib(){ showScreen("calibScreen"); $("calCamRow").style.display="f
   $("calHint").textContent="Sit side-on so your whole leg is visible.";
   $("calCam").onclick=async()=>{ mode="camera"; $("calCamRow").style.display="none"; $("spin").style.display="block";
     try{ await pose.load(t=>$("calHint").textContent=t); await pose.startCamera(video); camReady=true; running=true; camLoop();
-      $("spin").style.display="none"; $("calBody").style.display="block"; $("pipWrap").style.display="block"; $("calHint").textContent=""; }
+      $("spin").style.display="none"; $("calBody").style.display="block"; $("pipWrap").style.display="block"; $("calHint").textContent="";
+      const noCal=curDef.calib==="none"; $("calSet").style.display=noCal?"none":"inline-flex";
+      $("calSteps2").innerHTML=noCal?"Get into position (lie side-on, whole leg visible), then press <b>Start</b>.":"1) Straighten your leg → tap <b>Set 0°</b>. &nbsp; 2) <b>Start</b>."; }
     catch(e){ $("spin").style.display="none"; $("calCamRow").style.display="flex"; $("calHint").textContent="Camera error: "+(e.message||e); } };
   $("calMouse").onclick=()=>{ mode="mouse"; $("pipWrap").style.display="none"; startGame(); };
   $("calSet").onclick=()=>{ if(pose.calibrateZero()) toast("Zeroed — get into position"); else toast("Straighten your leg in view first"); };
@@ -95,6 +98,9 @@ function startGame(){ ended=false; showScreen("game"); $("hud").classList.add("o
   countUntil=performance.now()+3000; running=true; lastTs=performance.now(); requestAnimationFrame(loop); }
 
 function onGameEvent(e){ if(e.type==="end" && !ended){ ended=true; running=false; endGame(e); } }
+// per-game mouse-preview metrics (falls back to a knee-flex mapping)
+function mouseMetricsFor(p){ return (curDef&&curDef.mouseMetrics) ? curDef.mouseMetrics(p)
+  : { tracked:true, conf:1, flex:p*90, kneeFlex:p*90, kneeAngle:180-p*90, hipAngle:150, ankle:{x:.5,y:p}, side:"L" }; }
 
 // ── main loop ──
 function loop(now){ if(!running) return; requestAnimationFrame(loop);
@@ -102,7 +108,7 @@ function loop(now){ if(!running) return; requestAnimationFrame(loop);
   let m;
   if(mode==="camera"){ m=pose.frame(now); if(m.tracked && (m.conf||0)<CONF_GATE) m.tracked=false;  // require high confidence
     m.flex = (m.tracked && m.kneeFlex!=null)? (m.kneeFlex - pose.zero) : null; }
-  else { const f=pointerNorm*90; m={tracked:true,conf:1,flex:f,kneeFlex:f,kneeAngle:180-f,hipAngle:150,ankle:{x:0.5,y:pointerNorm},side:"L"}; }
+  else { m=mouseMetricsFor(pointerNorm); }
   renderBg(now);
   if(now<countUntil){ $("countbig").style.display="flex"; $("countbig").textContent=Math.ceil((countUntil-now)/1000); }
   else { $("countbig").style.display="none"; if(game&&!game.done) game.update(dt,m,now); }
@@ -134,7 +140,7 @@ function endGame(r){ running=false; pose.stop(); camReady=false; Audio.stopMusic
   showSummary(r,xp,coins,streak,newAch);
 }
 function showSummary(r,xp,coins,streak,newAch){ showScreen("sumScreen");
-  $("sumTitle").textContent=r.completed?"Exercise Complete!":"Session Ended";
+  $("sumTitle").textContent=(curDef?curDef.name+" — ":"")+(r.completed?"Complete!":"Session Ended");
   const se=$("sumStars"); se.innerHTML=""; for(let i=0;i<3;i++){ const s=document.createElement("span"); s.className="bigstar"+(i<r.stars?" lit":""); s.textContent="★"; s.style.animationDelay=(i*0.22)+"s"; se.appendChild(s); }
   $("sumStats").innerHTML=`
     <div class="crow"><span>Reps completed</span><b>${r.reps}</b></div>
@@ -171,6 +177,8 @@ stage.addEventListener("mousemove",ptr); stage.addEventListener("touchmove",e=>{
 // boot
 resize(); buildHub(); refreshHub(); showScreen("hub");
 // test hook
-window.__okc={ scene:()=>scene, openGame:()=>{curDef=QUAD; chosenDiff="gentle"; mode="mouse"; startGame();}, forcePlay:()=>{countUntil=0;},
-  setPointer:v=>{pointerNorm=v;}, step:(dt)=>{ if(!game)return; const f=pointerNorm*90; const m={tracked:true,conf:1,flex:f,kneeFlex:f,kneeAngle:180-f,hipAngle:150,ankle:{x:.5,y:pointerNorm},side:"L"}; game.update(dt||0.05,m,performance.now()); },
+window.__okc={ scene:()=>scene,
+  openGame:(id,hold)=>{ const G=GAMES.find(g=>g.def&&g.def.id===id); curDef=(G&&G.def)||QUAD; chosenDiff="gentle"; if(hold)chosenHold=hold; mode="mouse"; startGame(); },
+  forcePlay:()=>{countUntil=0;}, setPointer:v=>{pointerNorm=v;},
+  step:(dt)=>{ if(!game)return; game.update(dt||0.05, mouseMetricsFor(pointerNorm), performance.now()); },
   status:()=>game?game.status():null };
