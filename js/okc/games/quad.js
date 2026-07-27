@@ -13,20 +13,21 @@ class QuadPress {
   constructor(ctx){
     this.W=ctx.W; this.H=ctx.H; this.audio=ctx.audio; this.onEvent=ctx.onEvent||(()=>{});
     this.d = DIFFS[ctx.difficulty]||DIFFS.gentle;
+    this.holdSecs = ctx.holdSecs || this.d.holdSecs;         // patient-selected hold duration
     this.relaxThresh = Math.max(34, this.d.extThresh+22);   // must bend past this to arm the next rep
-    this.hold=new HoldDecay({holdSecs:this.d.holdSecs, decay:this.d.decay});
+    this.hold=new HoldDecay({holdSecs:this.holdSecs, decay:this.d.decay});
     this.steady=new Steady(20, 6);
     this.score=0; this.qSum=0; this.qN=0; this.reps=0; this.repsTarget=this.d.reps;
     this.phase="extend";                 // "extend" (charge a hold) | "relax" (bend back to arm next)
     this.roller=0.2; this.glow=0; this.zonePulse=0; this.rot=0; this.t=0;
     this.parts=[]; this.stream=[]; this.pops=[]; this.done=false; this.result=null;
-    this.lastFlex=null; this.inZone=false; this.fb={text:"",color:"#9aa6d4"};
+    this.lastFlex=null; this.inZone=false; this.conf=0; this.fb={text:"",color:"#9aa6d4"};
   }
   resize(W,H){ this.W=W; this.H=H; }
 
   update(dt, m, now){
     if(this.done) return; this.t+=dt; this.rot+=dt*(this.glow*3);
-    const flex = m.flex, tracked = m.tracked && flex!=null; this.lastFlex=tracked?flex:null;
+    const flex = m.flex, tracked = m.tracked && flex!=null; this.lastFlex=tracked?flex:null; this.conf=m.conf||0;
     const inZone = tracked && flex <= this.d.extThresh; this.inZone=inZone;
     if(tracked) this.steady.push(flex);
     const steadiness = inZone ? this.steady.value() : 0;
@@ -96,6 +97,8 @@ class QuadPress {
     g.font="bold 13px sans-serif";
     if(this.lastFlex==null){ g.fillStyle="#ffb84d"; g.fillText("no knee detected", x, top-28); }
     else { g.fillStyle=this.inZone?"#8affc0":"#7a86ad"; g.fillText(this.inZone?"● IN ZONE":"○ bend/extend to move", x, top-28); }
+    // confidence + hold target
+    g.font="11px sans-serif"; g.fillStyle="#9aa6d4"; g.fillText(`confidence ${Math.round(this.conf*100)}%  ·  hold ${this.holdSecs}s`, x, top-12);
     // reps pips
     for(let i=0;i<this.repsTarget;i++){ g.fillStyle=i<this.reps?"#ffe08a":"#ffffff33"; g.font="26px sans-serif"; g.fillText(i<this.reps?"★":"☆", x-(this.repsTarget-1)*17 + i*34, bot+42); }
     // particles + pops

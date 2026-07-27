@@ -22,7 +22,7 @@ export class PoseController {
   async load(onMsg){ if(this.landmarker) return; onMsg&&onMsg("Loading tracker… (first time ~10 MB)");
     const vision=await FilesetResolver.forVisionTasks(WASM);
     const opt=del=>({baseOptions:{modelAssetPath:POSE_MODEL,delegate:del},runningMode:"VIDEO",numPoses:1,
-      minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+      minPoseDetectionConfidence:.6,minPosePresenceConfidence:.6,minTrackingConfidence:.6});
     try{ this.landmarker=await PoseLandmarker.createFromOptions(vision,opt("GPU")); }
     catch(e){ this.landmarker=await PoseLandmarker.createFromOptions(vision,opt("CPU")); } }
 

@@ -24,6 +24,9 @@ const DIFFS=[
   { id:"champion",name:"Champion",desc:"Tight zone, long holds." },
 ];
 const ACH={ first:"first_okc", steady90:"okc_steady90", champ:"okc_champion", streak3:"okc_streak3" };
+const HOLD_PRESETS=[3,5,8,12,20];           // seconds the patient must hold per rep
+const CONF_GATE=0.6;                        // min tracking confidence to accept a frame
+let chosenHold=8;
 
 let W=0,H=0,DPR=1, scene="hub", mode="mouse", running=false, lastTs=0, countUntil=0;
 let curDef=null, chosenDiff="gentle", game=null, ended=false, pointerNorm=0.5;
@@ -51,7 +54,11 @@ function buildHub(){ const g=$("gameGrid"); g.innerHTML="";
 function openDiff(){ $("diffTitle").textContent=curDef.name; $("diffHow").innerHTML=curDef.howto+`<br><small>📷 ${curDef.camera}</small>`;
   const g=$("diffGrid"); g.innerHTML=""; DIFFS.forEach(dd=>{ const el=document.createElement("button"); el.className="pick diff"; el.dataset.id=dd.id;
     el.innerHTML=`<div class="pn">${dd.name}</div><div class="pd">${dd.desc}</div>`; el.onclick=()=>{ chosenDiff=dd.id; sel("diff",dd.id); Audio.tap&&Audio.tap(); }; g.appendChild(el); });
-  sel("diff",chosenDiff); showScreen("diffScreen"); }
+  sel("diff",chosenDiff);
+  const hg=$("holdRow"); hg.innerHTML=""; HOLD_PRESETS.forEach(sec=>{ const el=document.createElement("button"); el.className="pick hold"; el.dataset.id=sec;
+    el.style.width="92px"; el.innerHTML=`<div class="pn">${sec}s</div>`; el.onclick=()=>{ chosenHold=sec; sel("hold",sec); Audio.tap&&Audio.tap(); }; hg.appendChild(el); });
+  sel("hold",chosenHold);
+  showScreen("diffScreen"); }
 function sel(cls,id){ document.querySelectorAll("."+cls).forEach(e=>e.classList.toggle("sel",e.dataset.id==id)); }
 
 // ── flow ──
@@ -76,13 +83,14 @@ function openCalib(){ showScreen("calibScreen"); $("calCamRow").style.display="f
 }
 // lightweight pose loop during calibration (before game starts)
 function camLoop(){ if(!camReady || scene!=="calibScreen") return; requestAnimationFrame(camLoop); const now=performance.now(); pose.frame(now);
-  if(scene==="calibScreen"){ const f=pose.flexZeroed(); $("calNow").textContent = f!=null? Math.round(f)+"°":"—";
-    const b=$("calZone"); if(f==null){ b.textContent="📷 Move so your whole leg shows"; b.style.color="#ffb84d"; }
-    else { b.textContent="✓ Tracking — Set 0° when your leg is straight"; b.style.color="#8affc0"; }
+  if(scene==="calibScreen"){ const f=pose.flexZeroed(); const conf=Math.round((pose.m.conf||0)*100); $("calNow").textContent = f!=null? Math.round(f)+"°":"—";
+    const b=$("calZone"); const good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
+    if(f==null||!good){ b.textContent=`📷 Move so your whole leg shows · confidence ${conf}%`; b.style.color="#ffb84d"; }
+    else { b.textContent=`✓ Tracking ${conf}% — Set 0° when your leg is straight`; b.style.color="#8affc0"; }
     pose.drawPip(pctx,pip.width,pip.height); $("pipAngle").textContent=f!=null?Math.round(f)+"°":"—"; } }
 
 function startGame(){ ended=false; showScreen("game"); $("hud").classList.add("on");
-  game=curDef.make({ W,H, difficulty:chosenDiff, audio:Audio, onEvent:onGameEvent });
+  game=curDef.make({ W,H, difficulty:chosenDiff, holdSecs:chosenHold, audio:Audio, onEvent:onGameEvent });
   $("gTitle").textContent=curDef.name;
   countUntil=performance.now()+3000; running=true; lastTs=performance.now(); requestAnimationFrame(loop); }
 
@@ -92,7 +100,8 @@ function onGameEvent(e){ if(e.type==="end" && !ended){ ended=true; running=false
 function loop(now){ if(!running) return; requestAnimationFrame(loop);
   const dt=Math.min(0.05,(now-lastTs)/1000)||0; lastTs=now;
   let m;
-  if(mode==="camera"){ m=pose.frame(now); m.flex = (m.tracked && m.kneeFlex!=null)? (m.kneeFlex - pose.zero) : null; }
+  if(mode==="camera"){ m=pose.frame(now); if(m.tracked && (m.conf||0)<CONF_GATE) m.tracked=false;  // require high confidence
+    m.flex = (m.tracked && m.kneeFlex!=null)? (m.kneeFlex - pose.zero) : null; }
   else { const f=pointerNorm*90; m={tracked:true,conf:1,flex:f,kneeFlex:f,kneeAngle:180-f,hipAngle:150,ankle:{x:0.5,y:pointerNorm},side:"L"}; }
   renderBg(now);
   if(now<countUntil){ $("countbig").style.display="flex"; $("countbig").textContent=Math.ceil((countUntil-now)/1000); }
