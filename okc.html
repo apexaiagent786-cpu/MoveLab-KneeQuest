@@ -126,6 +126,7 @@
 </section>
 
 <div class="toast" id="toast"></div>
+<script>if("serviceWorker" in navigator){ window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }</script>
 <script type="module" src="js/okc/shell.js"></script>
 </body>
 </html>

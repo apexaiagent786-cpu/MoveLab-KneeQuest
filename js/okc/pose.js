@@ -14,14 +14,14 @@ export class PoseController {
     this.landmarker=null; this.stream=null; this.video=null; this.facing="user";
     this.fX=[]; this.fY=[]; for(let i=0;i<33;i++){this.fX[i]=new OneEuro();this.fY[i]=new OneEuro();}
     this.flexSmooth=new OneEuro(1.5,0.4); this.meter=new KneeMeter();
-    this.lastRes=null; this.lastVideoTime=-1; this.zero=0;
+    this.lastRes=null; this.lastVideoTime=-1; this.zero=0; this.primaryIdx=0;
     this.m={ tracked:false, conf:0, kneeFlex:null, kneeAngle:null, hipAngle:null, ankle:null, side:null };
   }
   get CONNECTIONS(){ return PoseLandmarker.POSE_CONNECTIONS; }
 
   async load(onMsg){ if(this.landmarker) return; onMsg&&onMsg("Loading tracker… (first time ~10 MB)");
     const vision=await FilesetResolver.forVisionTasks(WASM);
-    const opt=del=>({baseOptions:{modelAssetPath:POSE_MODEL,delegate:del},runningMode:"VIDEO",numPoses:1,
+    const opt=del=>({baseOptions:{modelAssetPath:POSE_MODEL,delegate:del},runningMode:"VIDEO",numPoses:3,
       minPoseDetectionConfidence:.6,minPosePresenceConfidence:.6,minTrackingConfidence:.6});
     try{ this.landmarker=await PoseLandmarker.createFromOptions(vision,opt("GPU")); }
     catch(e){ this.landmarker=await PoseLandmarker.createFromOptions(vision,opt("CPU")); } }
@@ -40,8 +40,9 @@ export class PoseController {
     if(!this.landmarker||!v||v.readyState<2){ m.tracked=false; return m; }
     if(v.currentTime!==this.lastVideoTime){ this.lastVideoTime=v.currentTime; try{ this.lastRes=this.landmarker.detectForVideo(v,now); }catch(e){} }
     const res=this.lastRes;
-    if(res&&res.landmarks&&res.landmarks[0]){
-      const raw=res.landmarks[0], wlm=(res.worldLandmarks&&res.worldLandmarks[0])||raw, t=now/1000;
+    if(res&&res.landmarks&&res.landmarks.length){
+      const pi=this._primary(res.landmarks); this.primaryIdx=pi;   // the patient = largest/closest person
+      const raw=res.landmarks[pi], wlm=(res.worldLandmarks&&res.worldLandmarks[pi])||raw, t=now/1000;
       const sm=raw.map((p,i)=>({x:this.fX[i].filt(p.x,t),y:this.fY[i].filt(p.y,t),z:p.z,visibility:vis(p)}));
       const [vl]=detectView(sm), asp=(v.videoWidth/v.videoHeight)||(16/9);
       const r=this.meter.measure(sm,wlm,vl,asp);
@@ -56,12 +57,19 @@ export class PoseController {
     } else { m.tracked=false; m.conf=0; m.kneeFlex=null; m.kneeAngle=null; m.hipAngle=null; }
     return m;
   }
+  // choose the patient = the person occupying the most of the frame (closest/foreground)
+  _primary(list){ if(list.length<=1) return 0; let best=0,ba=-1;
+    for(let i=0;i<list.length;i++){ const lm=list[i]; let mnx=1,mny=1,mxx=0,mxy=0,n=0;
+      for(const p of lm){ if((p.visibility??1)<0.3) continue; mnx=Math.min(mnx,p.x); mny=Math.min(mny,p.y); mxx=Math.max(mxx,p.x); mxy=Math.max(mxy,p.y); n++; }
+      const area = n>6 ? (mxx-mnx)*(mxy-mny) : 0; if(area>ba){ ba=area; best=i; } }
+    return best; }
+
   // calibration: current knee flex becomes 0 (straight-leg reference)
   calibrateZero(){ if(this.m.kneeFlex!=null){ this.zero=this.m.kneeFlex; return true; } return false; }
   flexZeroed(){ return this.m.kneeFlex==null? null : (this.m.kneeFlex - this.zero); }
 
   drawPip(ctx,w,h){ ctx.clearRect(0,0,w,h); const res=this.lastRes;
-    if(res&&res.landmarks&&res.landmarks[0]){ const lm=res.landmarks[0]; ctx.strokeStyle="#37e1ffaa"; ctx.lineWidth=2;
+    if(res&&res.landmarks&&res.landmarks.length){ const lm=res.landmarks[this.primaryIdx]||res.landmarks[0]; ctx.strokeStyle="#37e1ffaa"; ctx.lineWidth=2;
       for(const c of this.CONNECTIONS){ const a=lm[c.start],b=lm[c.end]; if(vis(a)<VIS_DRAW||vis(b)<VIS_DRAW)continue;
         ctx.beginPath(); ctx.moveTo(a.x*w,a.y*h); ctx.lineTo(b.x*w,b.y*h); ctx.stroke(); } } }
 }
