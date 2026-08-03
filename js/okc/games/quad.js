@@ -4,12 +4,12 @@
 // Proper rep cycle: EXTEND+hold → rep → must RELAX (bend back) before the next.
 import { HoldDecay, Steady, starsFor } from "../rehab.js";
 
-// extAngle = min knee angle (hip-knee-ankle, 180=straight) counted as "extended".
-// relaxAngle = must bend back below this to arm the next rep.
+// tol = degrees below the patient's calibrated full extension still counted as "extended".
+// The bar fills ONLY when kneeAngle >= extRef - tol, so even ~10° of flexion won't fill it.
 const DIFFS = {
-  gentle:   { extAngle:152, relaxAngle:120, holdSecs:6,  reps:3, decay:0.6 },
-  steady:   { extAngle:162, relaxAngle:130, holdSecs:9,  reps:4, decay:0.9 },
-  champion: { extAngle:170, relaxAngle:140, holdSecs:12, reps:5, decay:1.2 },
+  gentle:   { tol:6, holdSecs:6,  reps:3, decay:0.8 },
+  steady:   { tol:4, holdSecs:9,  reps:4, decay:1.1 },
+  champion: { tol:3, holdSecs:12, reps:5, decay:1.5 },
 };
 
 class QuadPress {
@@ -17,6 +17,9 @@ class QuadPress {
     this.W=ctx.W; this.H=ctx.H; this.audio=ctx.audio; this.onEvent=ctx.onEvent||(()=>{});
     this.d = DIFFS[ctx.difficulty]||DIFFS.gentle;
     this.holdSecs = ctx.holdSecs || this.d.holdSecs;
+    this.extRef = ctx.extRef || 178;                 // patient's calibrated full-extension angle
+    this.extAngle = this.extRef - this.d.tol;        // fill only at/above this
+    this.relaxAngle = this.extRef - 32;              // must bend back below this to arm next rep
     this.hold=new HoldDecay({holdSecs:this.holdSecs, decay:this.d.decay});
     this.steady=new Steady(20, 6);
     this.score=0; this.qSum=0; this.qN=0; this.reps=0; this.repsTarget=this.d.reps;
@@ -30,7 +33,7 @@ class QuadPress {
     if(this.done) return; this.t+=dt; this.rot+=dt*(this.glow*3);
     const angle = m.kneeAngle;                          // 180 = full extension (absolute)
     const tracked = m.tracked && angle!=null; this.angle=tracked?angle:null; this.conf=m.conf||0;
-    const inZone = tracked && angle >= this.d.extAngle; // ONLY near-extension counts
+    const inZone = tracked && angle >= this.extAngle; // ONLY within tol of full extension
     this.inZone=inZone;
     if(tracked) this.steady.push(angle);
     const steadiness = inZone ? this.steady.value() : 0;
@@ -41,7 +44,7 @@ class QuadPress {
       if(r.justRep){ this.reps++; this.score+=60; this._burst(); this.pop("+60 ✨"); this.audio&&this.audio.reward(); this.onEvent({type:"rep",reps:this.reps});
         if(this.reps>=this.repsTarget){ this._finish(); return; }
         this.phase="relax"; this.hold.reset(); }
-    } else { this.hold.p=0; if(tracked && angle <= this.d.relaxAngle){ this.phase="extend"; } }
+    } else { this.hold.p=0; if(tracked && angle <= this.relaxAngle){ this.phase="extend"; } }
 
     // roller: straighter (higher angle) presses up into the zone; bending drops it
     const target = tracked ? Math.max(0,Math.min(1,(angle-90)/90)) : 0.2;
@@ -105,6 +108,6 @@ class QuadPress {
 export default {
   id:"quad", name:"Quad Press", emoji:"💪", exercise:"Quad Isometrics", camera:"Sagittal (side-on)",
   howto:"Sit or lie side-on. <b>Straighten your knee fully</b> (toward 180°) to press the roller into the green zone and <b>hold steady</b> — then <b>relax (bend back)</b> before the next rep. Flexing does not charge.",
-  calib:"none", diffs:Object.keys(DIFFS),
+  calib:"extension", diffs:Object.keys(DIFFS),
   make(ctx){ return new QuadPress(ctx); },
 };

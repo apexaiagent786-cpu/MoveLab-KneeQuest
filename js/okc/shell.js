@@ -26,8 +26,8 @@ const DIFFS=[
 ];
 const ACH={ first:"first_okc", steady90:"okc_steady90", champ:"okc_champion", streak3:"okc_streak3" };
 const HOLD_PRESETS=[3,5,8,12,20];           // seconds the patient must hold per rep
-const CONF_GATE=0.6;                        // min tracking confidence to accept a frame
-let chosenHold=8;
+const CONF_GATE=0.4;                        // min tracking confidence to accept a frame (low-light friendly)
+let chosenHold=8, extRef=null;              // extRef = patient's calibrated full-extension angle
 
 let W=0,H=0,DPR=1, scene="hub", mode="mouse", running=false, lastTs=0, countUntil=0;
 let curDef=null, chosenDiff="gentle", game=null, ended=false, pointerNorm=0.5;
@@ -73,27 +73,35 @@ $("btnMute").onclick=()=>{ const m=!OKCSave.data.settings.muted; OKCSave.data.se
 $("btnMute").textContent=OKCSave.data.settings.muted?"🔇":"🔊"; Audio.setMuted(OKCSave.data.settings.muted);
 
 function openCalib(){ showScreen("calibScreen"); $("calCamRow").style.display="flex"; $("calBody").style.display="none"; $("spin").style.display="none"; $("pipWrap").style.display="none";
-  $("calHint").textContent="Sit side-on so your whole leg is visible.";
+  extRef=null;
+  const ext = curDef.calib==="extension";
+  $("calHint").textContent="Sit or lie side-on — only your LEG (hip→ankle) needs to be in view. ~1–1.5 m, good light.";
   $("calCam").onclick=async()=>{ mode="camera"; $("calCamRow").style.display="none"; $("spin").style.display="block";
     try{ await pose.load(t=>$("calHint").textContent=t); await pose.startCamera(video); camReady=true; running=true; camLoop();
       $("spin").style.display="none"; $("calBody").style.display="block"; $("pipWrap").style.display="block"; $("calHint").textContent="";
-      const noCal=curDef.calib==="none"; $("calSet").style.display=noCal?"none":"inline-flex";
-      $("calSteps2").innerHTML=noCal?"Get into position (lie side-on, whole leg visible), then press <b>Start</b>.":"1) Straighten your leg → tap <b>Set 0°</b>. &nbsp; 2) <b>Start</b>."; }
+      $("calSet").style.display = ext?"inline-flex":"none"; $("calSet").textContent = ext?"🎯 Capture extension":"🎯 Set 0°";
+      $("calSteps2").innerHTML = ext
+        ? "1) <b>Straighten your leg fully</b> & hold → <b>Capture extension</b>. &nbsp; 2) <b>Start</b>."
+        : "Get into position (only your leg needs to show), then press <b>Start</b>."; }
     catch(e){ $("spin").style.display="none"; $("calCamRow").style.display="flex"; $("calHint").textContent="Camera error: "+(e.message||e); } };
   $("calMouse").onclick=()=>{ mode="mouse"; $("pipWrap").style.display="none"; startGame(); };
-  $("calSet").onclick=()=>{ if(pose.calibrateZero()) toast("Zeroed — get into position"); else toast("Straighten your leg in view first"); };
+  $("calSet").onclick=()=>{ if(pose.m.kneeAngle!=null && pose.m.tracked){ extRef=pose.m.kneeAngle; toast("Captured full extension: "+Math.round(extRef)+"°"); }
+    else toast("Straighten your leg in view first"); };
   $("calGo").onclick=startGame;
 }
 // lightweight pose loop during calibration (before game starts)
 function camLoop(){ if(!camReady || scene!=="calibScreen") return; requestAnimationFrame(camLoop); const now=performance.now(); pose.frame(now);
-  if(scene==="calibScreen"){ const f=pose.flexZeroed(); const conf=Math.round((pose.m.conf||0)*100); $("calNow").textContent = f!=null? Math.round(f)+"°":"—";
-    const b=$("calZone"); const good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
-    if(f==null||!good){ b.textContent=`📷 Move so your whole leg shows · confidence ${conf}%`; b.style.color="#ffb84d"; }
-    else { b.textContent=`✓ Tracking ${conf}% — Set 0° when your leg is straight`; b.style.color="#8affc0"; }
-    pose.drawPip(pctx,pip.width,pip.height); $("pipAngle").textContent=f!=null?Math.round(f)+"°":"—"; } }
+  if(scene==="calibScreen"){ const a=pose.m.kneeAngle; const conf=Math.round((pose.m.conf||0)*100); const good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
+    $("calNow").textContent = a!=null? Math.round(a)+"°":"—";
+    const b=$("calZone");
+    if(a==null||!good){ b.textContent=`📷 Move closer / better light · confidence ${conf}%`; b.style.color="#ffb84d"; }
+    else if(curDef.calib==="extension"){ b.textContent = extRef!=null ? `✓ Captured ${Math.round(extRef)}° · confidence ${conf}%` : `✓ Tracking ${conf}% — straighten & Capture`; b.style.color="#8affc0"; }
+    else { b.textContent=`✓ Tracking ${conf}% — ready`; b.style.color="#8affc0"; }
+    pose.drawPip(pctx,pip.width,pip.height); $("pipAngle").textContent=a!=null?Math.round(a)+"°":"—"; } }
 
 function startGame(){ ended=false; showScreen("game"); $("hud").classList.add("on");
-  game=curDef.make({ W,H, difficulty:chosenDiff, holdSecs:chosenHold, audio:Audio, onEvent:onGameEvent });
+  const er = extRef!=null ? extRef : (pose.m.kneeAngle||178);   // fall back to current straight reading
+  game=curDef.make({ W,H, difficulty:chosenDiff, holdSecs:chosenHold, extRef:er, audio:Audio, onEvent:onGameEvent });
   $("gTitle").textContent=curDef.name;
   countUntil=performance.now()+3000; running=true; lastTs=performance.now(); requestAnimationFrame(loop); }
 
