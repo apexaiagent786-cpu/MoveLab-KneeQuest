@@ -77,7 +77,7 @@ function openCalib(){ showScreen("calibScreen"); $("calibScreen").classList.remo
   $("calCamRow").style.display="flex"; $("calBody").style.display="none"; $("spin").style.display="none"; $("pipWrap").style.display="none";
   extRef=null;
   const ext = curDef.calib==="extension";
-  $("calHint").textContent="Sit or lie side-on — only your LEG (hip→ankle) needs to be in view. ~1–1.5 m, good light.";
+  $("calHint").textContent="Sit or lie side-on with your WHOLE BODY in view (head to feet), ~2 m back, in good light. The tracker needs to see your body — not just the leg.";
   $("calCam").onclick=async()=>{ mode="camera"; $("calCamRow").style.display="none"; $("spin").style.display="block";
     try{ await pose.load(t=>$("calHint").textContent=t); await pose.startCamera(video); camReady=true; running=true; camLoop();
       $("spin").style.display="none"; $("calBody").style.display="block"; $("pipWrap").style.display="none"; $("calHint").textContent="";
@@ -100,9 +100,11 @@ function camLoop(){ if(!camReady || scene!=="calibScreen") return; requestAnimat
   $("calibScreen").classList.add("preview"); $("framehint").style.display="block";
   pose.drawScene(sctx, W, H);                       // full-screen live camera + skeleton
   const a=pose.m.kneeAngle, conf=Math.round((pose.m.conf||0)*100), good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
+  const anyPose = !!(pose.lastRes && pose.lastRes.landmarks && pose.lastRes.landmarks.length);
   $("calNow").textContent = a!=null? Math.round(a)+"°":"—";
   const b=$("calZone");
-  if(a==null||!good){ b.textContent=`📷 Fit your leg in the frame · confidence ${conf}%`; b.style.color="#ffb84d"; }
+  if(!anyPose){ b.textContent="📷 No body detected — step back so your whole body is in view"; b.style.color="#ff6f6f"; }
+  else if(a==null||!good){ b.textContent=`⚠ Weak tracking (${conf}%) — turn side-on, better light, whole leg visible`; b.style.color="#ffb84d"; }
   else if(curDef.calib==="extension"){ b.textContent = extRef!=null ? `✓ Captured ${Math.round(extRef)}° · conf ${conf}%` : `✓ Tracking ${conf}% — straighten & Capture`; b.style.color="#8affc0"; }
   else { b.textContent=`✓ Tracking ${conf}% — ready`; b.style.color="#8affc0"; } }
 

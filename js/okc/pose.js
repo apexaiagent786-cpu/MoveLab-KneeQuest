@@ -24,8 +24,8 @@ export class PoseController {
   async load(onMsg){ if(this.landmarker) return; onMsg&&onMsg("Loading tracker… (first time ~10 MB)");
     const vision=await FilesetResolver.forVisionTasks(WASM);
     // detection thresholds kept moderate so it still finds the leg in low light
-    const opt=del=>({baseOptions:{modelAssetPath:POSE_MODEL,delegate:del},runningMode:"VIDEO",numPoses:3,
-      minPoseDetectionConfidence:.5,minPosePresenceConfidence:.5,minTrackingConfidence:.5});
+    const opt=del=>({baseOptions:{modelAssetPath:POSE_MODEL,delegate:del},runningMode:"VIDEO",numPoses:2,
+      minPoseDetectionConfidence:.4,minPosePresenceConfidence:.4,minTrackingConfidence:.4});
     try{ this.landmarker=await PoseLandmarker.createFromOptions(vision,opt("GPU")); }
     catch(e){ this.landmarker=await PoseLandmarker.createFromOptions(vision,opt("CPU")); } }
 

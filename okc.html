@@ -71,7 +71,7 @@
 <canvas id="stage"></canvas>
 <video id="video" playsinline autoplay muted></video>
 <div id="pipWrap"><canvas id="pip"></canvas><div id="pipAngle">—</div></div>
-<div id="framehint">Fit your whole leg (hip → ankle) in the frame</div>
+<div id="framehint">Get your whole body side-on in the frame (head to feet)</div>
 
 <!-- HUB -->
 <section class="screen" id="hub">
@@ -135,7 +135,13 @@
 </section>
 
 <div class="toast" id="toast"></div>
-<script>if("serviceWorker" in navigator){ window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{})); }</script>
+<script>
+if("serviceWorker" in navigator){
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener("controllerchange",()=>{ if(refreshing)return; refreshing=true; location.reload(); });
+  window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+}
+</script>
 <script type="module" src="js/okc/shell.js"></script>
 </body>
 </html>
