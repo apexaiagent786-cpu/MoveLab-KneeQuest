@@ -39,7 +39,8 @@ function resize(){ DPR=Math.min(devicePixelRatio||1,2); W=innerWidth; H=innerHei
 addEventListener("resize",resize); addEventListener("orientationchange",()=>setTimeout(resize,200));
 
 const SCREENS=["hub","diffScreen","calibScreen","sumScreen","dashScreen"];
-function showScreen(id){ scene=id; for(const s of SCREENS) $(s).classList.toggle("on", s===id); $("hud").classList.toggle("on", id==="game"); }
+function showScreen(id){ scene=id; for(const s of SCREENS) $(s).classList.toggle("on", s===id); $("hud").classList.toggle("on", id==="game");
+  if(id!=="calibScreen"){ $("calibScreen").classList.remove("preview"); $("framehint").style.display="none"; } }
 function toScene(id){ Audio.tap&&Audio.tap(); showScreen(id); if(id==="hub")refreshHub(); if(id==="dashScreen")renderDash(); }
 function toast(m){ const t=$("toast"); t.textContent=m; t.style.opacity=1; clearTimeout(t._h); t._h=setTimeout(()=>t.style.opacity=0,1800); }
 
@@ -72,18 +73,23 @@ $("btnPause").onclick=()=>{ running=false; pose.stop(); camReady=false; Audio.st
 $("btnMute").onclick=()=>{ const m=!OKCSave.data.settings.muted; OKCSave.data.settings.muted=m; OKCSave.save(); Audio.setMuted(m); $("btnMute").textContent=m?"🔇":"🔊"; };
 $("btnMute").textContent=OKCSave.data.settings.muted?"🔇":"🔊"; Audio.setMuted(OKCSave.data.settings.muted);
 
-function openCalib(){ showScreen("calibScreen"); $("calCamRow").style.display="flex"; $("calBody").style.display="none"; $("spin").style.display="none"; $("pipWrap").style.display="none";
+function openCalib(){ showScreen("calibScreen"); $("calibScreen").classList.remove("preview"); $("framehint").style.display="none";
+  $("calCamRow").style.display="flex"; $("calBody").style.display="none"; $("spin").style.display="none"; $("pipWrap").style.display="none";
   extRef=null;
   const ext = curDef.calib==="extension";
   $("calHint").textContent="Sit or lie side-on — only your LEG (hip→ankle) needs to be in view. ~1–1.5 m, good light.";
   $("calCam").onclick=async()=>{ mode="camera"; $("calCamRow").style.display="none"; $("spin").style.display="block";
     try{ await pose.load(t=>$("calHint").textContent=t); await pose.startCamera(video); camReady=true; running=true; camLoop();
-      $("spin").style.display="none"; $("calBody").style.display="block"; $("pipWrap").style.display="block"; $("calHint").textContent="";
+      $("spin").style.display="none"; $("calBody").style.display="block"; $("pipWrap").style.display="none"; $("calHint").textContent="";
       $("calSet").style.display = ext?"inline-flex":"none"; $("calSet").textContent = ext?"🎯 Capture extension":"🎯 Set 0°";
       $("calSteps2").innerHTML = ext
-        ? "1) <b>Straighten your leg fully</b> & hold → <b>Capture extension</b>. &nbsp; 2) <b>Start</b>."
-        : "Get into position (only your leg needs to show), then press <b>Start</b>."; }
-    catch(e){ $("spin").style.display="none"; $("calCamRow").style.display="flex"; $("calHint").textContent="Camera error: "+(e.message||e); } };
+        ? "Position your leg, then <b>straighten fully</b> & tap <b>Capture</b>, then <b>Start</b>."
+        : "Position your leg in the frame, then press <b>Start</b>."; }
+    catch(e){ $("spin").style.display="none"; $("calCamRow").style.display="flex";
+      const denied=/denied|permission|NotAllowed/i.test(e.name+e.message);
+      $("calHint").innerHTML = denied
+        ? "⚠ Camera blocked. Tap <b>Play with camera</b> again and choose <b>Allow</b>. On a phone use Chrome/Safari (an embedded preview can't use the camera)."
+        : "Camera error: "+(e.message||e); } };
   $("calMouse").onclick=()=>{ mode="mouse"; $("pipWrap").style.display="none"; startGame(); };
   $("calSet").onclick=()=>{ if(pose.m.kneeAngle!=null && pose.m.tracked){ extRef=pose.m.kneeAngle; toast("Captured full extension: "+Math.round(extRef)+"°"); }
     else toast("Straighten your leg in view first"); };
@@ -91,15 +97,18 @@ function openCalib(){ showScreen("calibScreen"); $("calCamRow").style.display="f
 }
 // lightweight pose loop during calibration (before game starts)
 function camLoop(){ if(!camReady || scene!=="calibScreen") return; requestAnimationFrame(camLoop); const now=performance.now(); pose.frame(now);
-  if(scene==="calibScreen"){ const a=pose.m.kneeAngle; const conf=Math.round((pose.m.conf||0)*100); const good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
-    $("calNow").textContent = a!=null? Math.round(a)+"°":"—";
-    const b=$("calZone");
-    if(a==null||!good){ b.textContent=`📷 Move closer / better light · confidence ${conf}%`; b.style.color="#ffb84d"; }
-    else if(curDef.calib==="extension"){ b.textContent = extRef!=null ? `✓ Captured ${Math.round(extRef)}° · confidence ${conf}%` : `✓ Tracking ${conf}% — straighten & Capture`; b.style.color="#8affc0"; }
-    else { b.textContent=`✓ Tracking ${conf}% — ready`; b.style.color="#8affc0"; }
-    pose.drawPip(pctx,pip.width,pip.height); $("pipAngle").textContent=a!=null?Math.round(a)+"°":"—"; } }
+  $("calibScreen").classList.add("preview"); $("framehint").style.display="block";
+  pose.drawScene(sctx, W, H);                       // full-screen live camera + skeleton
+  const a=pose.m.kneeAngle, conf=Math.round((pose.m.conf||0)*100), good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
+  $("calNow").textContent = a!=null? Math.round(a)+"°":"—";
+  const b=$("calZone");
+  if(a==null||!good){ b.textContent=`📷 Fit your leg in the frame · confidence ${conf}%`; b.style.color="#ffb84d"; }
+  else if(curDef.calib==="extension"){ b.textContent = extRef!=null ? `✓ Captured ${Math.round(extRef)}° · conf ${conf}%` : `✓ Tracking ${conf}% — straighten & Capture`; b.style.color="#8affc0"; }
+  else { b.textContent=`✓ Tracking ${conf}% — ready`; b.style.color="#8affc0"; } }
 
 function startGame(){ ended=false; showScreen("game"); $("hud").classList.add("on");
+  $("calibScreen").classList.remove("preview"); $("framehint").style.display="none";
+  $("pipWrap").style.display = mode==="camera" ? "block" : "none";
   const er = extRef!=null ? extRef : (pose.m.kneeAngle||178);   // fall back to current straight reading
   game=curDef.make({ W,H, difficulty:chosenDiff, holdSecs:chosenHold, extRef:er, audio:Audio, onEvent:onGameEvent });
   $("gTitle").textContent=curDef.name;
@@ -121,7 +130,7 @@ function loop(now){ if(!running) return; requestAnimationFrame(loop);
   if(now<countUntil){ $("countbig").style.display="flex"; $("countbig").textContent=Math.ceil((countUntil-now)/1000); }
   else { $("countbig").style.display="none"; if(game&&!game.done) game.update(dt,m,now); }
   if(game) game.render(sctx,now);
-  if(mode==="camera") pose.drawPip(pctx,pip.width,pip.height);
+  if(mode==="camera") pose.drawScene(pctx,pip.width,pip.height);
   const s=game?game.status():null; if(s) updateHUD(s);
   if(s&&s.done&&!ended){ ended=true; endGame(s.result); }
 }

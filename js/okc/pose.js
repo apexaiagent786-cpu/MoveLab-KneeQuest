@@ -73,6 +73,19 @@ export class PoseController {
 
   calibrateZero(){ if(this.m.kneeAngle!=null){ this.zero=180-this.m.kneeAngle; return true; } return false; }
 
+  // draw the live camera (cover-fit) + skeleton, tracked leg highlighted.
+  // used full-screen for the get-ready preview AND small for the in-game PIP.
+  drawScene(ctx,w,h){ ctx.clearRect(0,0,w,h); const v=this.video; if(!v||!v.videoWidth) return;
+    const vw=v.videoWidth, vh=v.videoHeight, scale=Math.max(w/vw,h/vh), dw=vw*scale, dh=vh*scale, ox=(w-dw)/2, oy=(h-dh)/2;
+    try{ ctx.drawImage(v,ox,oy,dw,dh); }catch(e){}
+    const res=this.lastRes; if(!(res&&res.landmarks&&res.landmarks.length)) return;
+    const lm=res.landmarks[this.primaryIdx]||res.landmarks[0], P=p=>[ox+p.x*dw, oy+p.y*dh];
+    ctx.lineWidth=Math.max(2,w/320); ctx.strokeStyle="#37e1ffbb";
+    for(const c of this.CONNECTIONS){ const a=lm[c.start],b=lm[c.end]; if(vis(a)<0.4||vis(b)<0.4)continue; const pa=P(a),pb=P(b); ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke(); }
+    const s=this.m.side; if(s){ ctx.strokeStyle="#8affc0"; ctx.lineWidth=Math.max(4,w/150);
+      for(const [i,j] of [[HIP[s],KNEE[s]],[KNEE[s],ANK[s]]]){ const a=lm[i],b=lm[j]; if(vis(a)<0.3||vis(b)<0.3)continue; const pa=P(a),pb=P(b); ctx.beginPath();ctx.moveTo(pa[0],pa[1]);ctx.lineTo(pb[0],pb[1]);ctx.stroke(); }
+      for(const idx of [HIP[s],KNEE[s],ANK[s]]){ const p=lm[idx]; if(vis(p)<0.3)continue; const pp=P(p); ctx.fillStyle="#8affc0"; ctx.beginPath();ctx.arc(pp[0],pp[1],Math.max(4,w/140),0,7);ctx.fill(); } } }
+
   drawPip(ctx,w,h){ ctx.clearRect(0,0,w,h); const res=this.lastRes;
     if(res&&res.landmarks&&res.landmarks.length){ const lm=res.landmarks[this.primaryIdx]||res.landmarks[0]; ctx.strokeStyle="#37e1ffcc"; ctx.lineWidth=2.5;
       for(const c of this.CONNECTIONS){ const a=lm[c.start],b=lm[c.end]; if(vis(a)<VIS_DRAW||vis(b)<VIS_DRAW)continue;
