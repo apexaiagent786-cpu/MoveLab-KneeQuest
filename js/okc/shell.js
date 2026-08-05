@@ -43,6 +43,12 @@ function showScreen(id){ scene=id; for(const s of SCREENS) $(s).classList.toggle
   if(id!=="calibScreen"){ $("calibScreen").classList.remove("preview"); $("framehint").style.display="none"; } }
 function toScene(id){ Audio.tap&&Audio.tap(); showScreen(id); if(id==="hub")refreshHub(); if(id==="dashScreen")renderDash(); }
 function toast(m){ const t=$("toast"); t.textContent=m; t.style.opacity=1; clearTimeout(t._h); t._h=setTimeout(()=>t.style.opacity=0,1800); }
+// ── voice guidance (so the patient can play by ear with the phone across the room) ──
+let _spoke="", _spokeAt=0, _count=-1, _lastFb="";
+function canSpeak(){ return !OKCSave.data.settings.muted && ("speechSynthesis" in window); }
+function say(text, rate=1.0){ if(!canSpeak())return; try{ speechSynthesis.cancel(); const u=new SpeechSynthesisUtterance(text); u.rate=rate; u.pitch=1.05; speechSynthesis.speak(u);}catch(e){} }
+function speakCue(text){ if(!text)return; const now=performance.now(); if(now-_spokeAt<1600)return; if(text===_spoke && now-_spokeAt<3200)return; _spoke=text; _spokeAt=now; say(cleanSpeak(text)); }
+function cleanSpeak(t){ return t.replace(/[^\w\s.,!'’-]/g,"").replace(/\s+/g," ").trim(); }
 
 // ── hub ──
 function refreshHub(){ const d=OKCSave.data; $("coinN").textContent=d.coins; $("rankN").textContent="Lv "+rankFor(d.xp); $("streakN").textContent="🔥 "+d.streak; }
@@ -101,22 +107,25 @@ function camLoop(){ if(!camReady || scene!=="calibScreen") return; requestAnimat
   pose.drawScene(sctx, W, H);                       // full-screen live camera + skeleton
   const a=pose.m.kneeAngle, conf=Math.round((pose.m.conf||0)*100), good=pose.m.tracked && (pose.m.conf||0)>=CONF_GATE;
   const anyPose = !!(pose.lastRes && pose.lastRes.landmarks && pose.lastRes.landmarks.length);
-  $("calNow").textContent = a!=null? Math.round(a)+"°":"—";
+  $("calNow").textContent = pose.m.kneeAngleDisp!=null? Math.round(pose.m.kneeAngleDisp)+"°":"—";
   const b=$("calZone");
   if(!anyPose){ b.textContent="📷 No body detected — step back so your whole body is in view"; b.style.color="#ff6f6f"; }
   else if(a==null||!good){ b.textContent=`⚠ Weak tracking (${conf}%) — turn side-on, better light, whole leg visible`; b.style.color="#ffb84d"; }
   else if(curDef.calib==="extension"){ b.textContent = extRef!=null ? `✓ Captured ${Math.round(extRef)}° · conf ${conf}%` : `✓ Tracking ${conf}% — straighten & Capture`; b.style.color="#8affc0"; }
   else { b.textContent=`✓ Tracking ${conf}% — ready`; b.style.color="#8affc0"; } }
 
-function startGame(){ ended=false; showScreen("game"); $("hud").classList.add("on");
+function startGame(){ ended=false; _lastFb=""; _count=-1; showScreen("game"); $("hud").classList.add("on");
   $("calibScreen").classList.remove("preview"); $("framehint").style.display="none";
+  say(curDef.name+". "+(curDef.exercise||""), 1.0);
   $("pipWrap").style.display = mode==="camera" ? "block" : "none";
   const er = extRef!=null ? extRef : (pose.m.kneeAngle||178);   // fall back to current straight reading
   game=curDef.make({ W,H, difficulty:chosenDiff, holdSecs:chosenHold, extRef:er, audio:Audio, onEvent:onGameEvent });
   $("gTitle").textContent=curDef.name;
   countUntil=performance.now()+3000; running=true; lastTs=performance.now(); requestAnimationFrame(loop); }
 
-function onGameEvent(e){ if(e.type==="end" && !ended){ ended=true; running=false; endGame(e); } }
+function onGameEvent(e){
+  if(e.type==="rep"){ say("Rep "+e.reps); _spokeAt=performance.now(); }
+  if(e.type==="end" && !ended){ ended=true; running=false; endGame(e); } }
 // per-game mouse-preview metrics (falls back to a knee-flex mapping)
 function mouseMetricsFor(p){ return (curDef&&curDef.mouseMetrics) ? curDef.mouseMetrics(p)
   : { tracked:true, conf:1, flex:p*90, kneeFlex:p*90, kneeAngle:180-p*90, hipAngle:150, ankle:{x:.5,y:p}, side:"L" }; }
@@ -129,11 +138,13 @@ function loop(now){ if(!running) return; requestAnimationFrame(loop);
     m.flex = (m.tracked && m.kneeFlex!=null)? (m.kneeFlex - pose.zero) : null; }
   else { m=mouseMetricsFor(pointerNorm); }
   renderBg(now);
-  if(now<countUntil){ $("countbig").style.display="flex"; $("countbig").textContent=Math.ceil((countUntil-now)/1000); }
-  else { $("countbig").style.display="none"; if(game&&!game.done) game.update(dt,m,now); }
+  if(now<countUntil){ const c=Math.ceil((countUntil-now)/1000); $("countbig").style.display="flex"; $("countbig").textContent=c;
+    if(c!==_count){ _count=c; Audio.tap&&Audio.tap(); say(String(c),1.1); } }
+  else { $("countbig").style.display="none"; if(_count!==0){ _count=0; say("Go!",1.1); } if(game&&!game.done) game.update(dt,m,now); }
   if(game) game.render(sctx,now);
   if(mode==="camera") pose.drawScene(pctx,pip.width,pip.height);
-  const s=game?game.status():null; if(s) updateHUD(s);
+  const s=game?game.status():null; if(s){ updateHUD(s);
+    const ft=s.feedback&&s.feedback.text; if(ft && ft!==_lastFb){ _lastFb=ft; speakCue(ft); } }
   if(s&&s.done&&!ended){ ended=true; endGame(s.result); }
 }
 let bgStars=null;
@@ -147,6 +158,7 @@ function updateHUD(s){ $("progBar").style.width=Math.round(s.progress*100)+"%"; 
 
 // ── summary + progression ──
 function endGame(r){ running=false; pose.stop(); camReady=false; Audio.stopMusic(); Audio.victory&&Audio.victory();
+  setTimeout(()=>say(r.completed?"Exercise complete. Great job!":"Session ended."),300);
   const xp = r.completed? 40 + r.stars*30 + Math.round((r.quality||0)/3) : 15;
   const coins = r.completed? 15 + r.stars*10 : 5;
   OKCSave.addXP(xp); OKCSave.addCoins(coins); const streak=OKCSave.touchStreak();

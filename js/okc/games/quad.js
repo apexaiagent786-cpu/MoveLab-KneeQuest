@@ -25,14 +25,15 @@ class QuadPress {
     this.score=0; this.qSum=0; this.qN=0; this.reps=0; this.repsTarget=this.d.reps;
     this.phase="extend"; this.roller=0.2; this.glow=0; this.zonePulse=0; this.rot=0; this.t=0;
     this.parts=[]; this.stream=[]; this.pops=[]; this.done=false; this.result=null;
-    this.angle=null; this.inZone=false; this.conf=0; this.fb={text:"",color:"#9aa6d4"};
+    this.angle=null; this.angleDisp=null; this.inZone=false; this.conf=0; this.fb={text:"",color:"#9aa6d4"};
   }
   resize(W,H){ this.W=W; this.H=H; }
 
   update(dt, m, now){
     if(this.done) return; this.t+=dt; this.rot+=dt*(this.glow*3);
-    const angle = m.kneeAngle;                          // 180 = full extension (absolute)
+    const angle = m.kneeAngle;                          // 180 = full extension (absolute, precise for logic)
     const tracked = m.tracked && angle!=null; this.angle=tracked?angle:null; this.conf=m.conf||0;
+    this.angleDisp = tracked ? (m.kneeAngleDisp!=null?m.kneeAngleDisp:angle) : null;   // steady number for display
     const inZone = tracked && angle >= this.extAngle; // ONLY within tol of full extension
     this.inZone=inZone;
     if(tracked) this.steady.push(angle);
@@ -87,7 +88,7 @@ class QuadPress {
     g.beginPath(); g.arc(x,ry,58,-Math.PI/2,-Math.PI/2+this.hold.p*2*Math.PI); g.strokeStyle="#ffe08a"; g.lineWidth=6; g.lineCap="round"; g.stroke();
     // LIVE readout — knee angle (180 = straight) + zone status
     g.textAlign="center"; g.font="900 30px sans-serif"; g.fillStyle="#eef2ff";
-    g.fillText(this.angle==null?"— °":Math.round(this.angle)+"°", x, top-46);
+    g.fillText(this.angleDisp==null?"— °":Math.round(this.angleDisp)+"°", x, top-46);
     g.font="bold 13px sans-serif";
     if(this.angle==null){ g.fillStyle="#ffb84d"; g.fillText("no knee detected", x, top-28); }
     else { g.fillStyle=this.inZone?"#8affc0":"#7a86ad"; g.fillText(this.inZone?"● EXTENDED — hold!":"○ straighten to extend (180°)", x, top-28); }
